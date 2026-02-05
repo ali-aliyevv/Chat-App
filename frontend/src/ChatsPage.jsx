@@ -36,7 +36,6 @@ function labelForDayKey(dayKey) {
   return date.toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" });
 }
 
-// history + realtime birləşdir, duplicate olmasın
 function mergeMessages(prev, incoming) {
   const map = new Map();
 
@@ -156,14 +155,12 @@ const ChatsPage = ({ user, onLogout }) => {
       }
     };
 
-    // ✅ ƏSAS FIX: server msg clientId göndərirsə optimistic-i replace et
     const onMessage = (msg) => {
       if (!mounted) return;
 
       setMessages((prev) => {
         const incoming = msg ? [msg] : [];
 
-        // replace optimistic by clientId
         if (msg?.clientId) {
           const clientId = String(msg.clientId);
           const idx = prev.findIndex((m) => String(m.id) === clientId);
@@ -171,7 +168,6 @@ const ChatsPage = ({ user, onLogout }) => {
           if (idx !== -1) {
             const copy = [...prev];
 
-            // əgər artıq serverId ilə mesaj var -> tmp-ni sil
             const alreadyHasServer = prev.some((m) => String(m.id) === String(msg.id));
             if (alreadyHasServer) {
               copy.splice(idx, 1);
@@ -213,7 +209,6 @@ const ChatsPage = ({ user, onLogout }) => {
       }
     };
 
-    // ✅ delivered ack
     const onDelivered = ({ clientId, messageId }) => {
       if (!mounted) return;
 
@@ -221,7 +216,6 @@ const ChatsPage = ({ user, onLogout }) => {
         const cid = clientId ? String(clientId) : null;
         const mid = messageId ? String(messageId) : null;
 
-        // əgər server msg artıq gəlibsə, tmp-ni sil
         if (cid && mid && prev.some((m) => String(m.id) === mid)) {
           return prev.filter((m) => String(m.id) !== cid);
         }
@@ -238,7 +232,6 @@ const ChatsPage = ({ user, onLogout }) => {
       });
     };
 
-    // ✅ seen
     const onSeen = ({ readUpTo }) => {
       if (!mounted) return;
       if (!readUpTo) return;
@@ -282,7 +275,6 @@ const ChatsPage = ({ user, onLogout }) => {
       }
     };
 
-    // HMR cleanup
     socket.off("room:joined");
     socket.off("room:users");
     socket.off("room:history");

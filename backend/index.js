@@ -1,4 +1,3 @@
-// backend/index.js
 require("dotenv").config();
 
 const express = require("express");
@@ -12,28 +11,24 @@ const { randomUUID } = require("crypto");
 
 const { sendOtpEmail } = require("./mail");
 const {
-  // users
   createUser,
   findUserByEmail,
   findUserByUsername,
   findUserByIdentifier,
   findUserById,
-  // refresh
   storeRefreshToken,
   revokeRefreshToken,
   revokeAllRefreshTokensForUser,
   getRefreshTokenRecord,
   deleteExpiredRefreshTokens,
-  // messages
   addMessage,
   getRecentMessages,
 } = require("./db");
 
 const app = express();
-app.set("trust proxy", 1); // ✅ prod reverse proxy üçün
+app.set("trust proxy", 1); 
 const server = http.createServer(app);
 
-// ==== CONFIG ====
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "http://localhost:5173";
 const ACCESS_SECRET = process.env.ACCESS_SECRET || "ACCESS_SECRET_CHANGE_ME";
 const REFRESH_SECRET = process.env.REFRESH_SECRET || "REFRESH_SECRET_CHANGE_ME";
@@ -54,7 +49,6 @@ app.use(
   })
 );
 
-// email -> { codeHash, expiresAt, pending: { email, username, passHash } }
 const otpStore = new Map();
 
 function normalizeEmail(email) {
@@ -95,12 +89,10 @@ function setAuthCookies(res, accessToken, refreshToken) {
 }
 
 function clearAuthCookies(res) {
-  // ✅ cookie silinməsi üçün eyni options veririk
   res.clearCookie("access_token", cookieOptions());
   res.clearCookie("refresh_token", cookieOptions());
 }
 
-// ==== AUTH MIDDLEWARE ====
 function requireAuth(req, res, next) {
   const token = req.cookies?.access_token;
   if (!token) return res.status(401).json({ message: "No access token" });
@@ -132,7 +124,6 @@ function makeOtpCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
-// ==== ROUTES ====
 app.get("/health", (req, res) => res.json({ ok: true }));
 
 app.post("/api/register/request-otp", async (req, res) => {
@@ -272,7 +263,6 @@ app.post("/api/refresh", (req, res) => {
     return res.status(401).json({ message: "User not found" });
   }
 
-  // rotate
   revokeRefreshToken(rt);
 
   const newAccess = signAccess(user);
@@ -282,7 +272,6 @@ app.post("/api/refresh", (req, res) => {
 
   setAuthCookies(res, newAccess, newRefresh);
 
-  // ✅ periodic cleanup (lightweight)
   try {
     deleteExpiredRefreshTokens();
   } catch {}
@@ -304,7 +293,6 @@ app.get("/api/me", optionalAuth, (req, res) => {
   });
 });
 
-// ==== SOCKET.IO ====
 const io = new Server(server, {
   cors: {
     origin: FRONTEND_ORIGIN,
@@ -363,7 +351,6 @@ io.on("connection", (socket) => {
       users: Array.from(roomUsers.get(r)),
     });
 
-    // istəsən sys msg-ləri söndürə bilərik (DB dolmasın)
     const sysMsg = {
       id: randomUUID(),
       room: r,

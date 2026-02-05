@@ -1,7 +1,5 @@
-// frontend/src/socket.js
 import { io } from "socket.io-client";
 
-// Vite env: VITE_API_URL
 const URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
 export const socket = io(URL, {

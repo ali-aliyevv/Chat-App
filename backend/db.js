@@ -1,11 +1,9 @@
-// backend/db.js
 const path = require("path");
 const Database = require("better-sqlite3");
 
 const dbPath = path.join(__dirname, "data.sqlite");
 const db = new Database(dbPath);
 
-// ✅ foreign keys ON + WAL
 db.exec(`
   PRAGMA journal_mode = WAL;
   PRAGMA foreign_keys = ON;
@@ -60,7 +58,6 @@ function isEmailLike(s) {
   return /.+@.+\..+/.test(String(s || "").trim());
 }
 
-// ===== USERS =====
 function createUser({ id, username, email, passHash }) {
   const stmt = db.prepare(`
     INSERT INTO users (id, username, email, pass_hash, created_at)
@@ -104,7 +101,6 @@ function findUserByIdentifier(identifier) {
   return findUserByUsername(id) || findUserByEmail(id);
 }
 
-// ===== REFRESH TOKENS =====
 function storeRefreshToken({ token, userId, expiresAt }) {
   db.prepare(`
     INSERT OR REPLACE INTO refresh_tokens (token, user_id, created_at, expires_at, revoked_at)
@@ -138,7 +134,6 @@ function getRefreshTokenRecord(token) {
     .get(String(token));
 }
 
-// ✅ optional cleanup helpers (prod üçün yaxşıdır)
 function deleteExpiredRefreshTokens() {
   db.prepare(`
     DELETE FROM refresh_tokens
@@ -146,7 +141,6 @@ function deleteExpiredRefreshTokens() {
   `).run(Date.now());
 }
 
-// ===== MESSAGES =====
 function addMessage({ id, room, clientId, username, text, system, createdAt }) {
   db.prepare(`
     INSERT INTO messages (id, room, client_id, username, text, system, created_at)
@@ -181,21 +175,18 @@ function getRecentMessages(room, limit = 50) {
 module.exports = {
   db,
 
-  // users
   createUser,
   findUserByEmail,
   findUserByUsername,
   findUserById,
   findUserByIdentifier,
 
-  // refresh
   storeRefreshToken,
   revokeRefreshToken,
   revokeAllRefreshTokensForUser,
   getRefreshTokenRecord,
   deleteExpiredRefreshTokens,
 
-  // messages
   addMessage,
   getRecentMessages,
 };

@@ -7,7 +7,7 @@ import "./App.css";
 const ROOM_KEY = "rt_room";
 
 export default function App() {
-  const [user, setUser] = useState(null); // { username, room }
+  const [user, setUser] = useState(null); 
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -22,7 +22,6 @@ export default function App() {
           setUser(null);
         }
       } catch {
-        // buraya artıq düşməməlidir, amma yenə də safety
         setUser(null);
       } finally {
         setLoading(false);
@@ -50,7 +49,6 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      {/* Global animated background */}
       <div className="fx-bg" aria-hidden="true">
         <div className="fx-blob fx-blob--a" />
         <div className="fx-blob fx-blob--b" />
