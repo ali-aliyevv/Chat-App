@@ -3,7 +3,7 @@ import PropTypes from "prop-types";
 import { api } from "./api";
 import "./style/AuthPage.css";
 
-const OTP_TTL_SEC = 5 * 60; 
+const OTP_TTL_SEC = 5 * 60;
 const RESEND_COOLDOWN_SEC = 60;
 
 const formatMMSS = (sec) => {
@@ -13,9 +13,9 @@ const formatMMSS = (sec) => {
 };
 
 const AuthPage = ({ onAuthed }) => {
-  const [mode, setMode] = useState("login"); 
+  const [mode, setMode] = useState("login");
 
-  const [identifier, setIdentifier] = useState(""); 
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
 
   const [email, setEmail] = useState("");
@@ -80,6 +80,10 @@ const AuthPage = ({ onAuthed }) => {
 
   const requestOtp = async (e) => {
     if (e?.preventDefault) e.preventDefault();
+
+    // ✅ double submit qoruması
+    if (loading) return;
+
     resetMsgs();
     setLoading(true);
 
@@ -95,7 +99,6 @@ const AuthPage = ({ onAuthed }) => {
       const sec = r.data?.expiresInSec ?? OTP_TTL_SEC;
       setOtpLeft(sec);
       setResendLeft(RESEND_COOLDOWN_SEC);
-
     } catch (e2) {
       setErr(e2.response?.data?.message || e2.message);
     } finally {
@@ -105,6 +108,10 @@ const AuthPage = ({ onAuthed }) => {
 
   const verifyOtp = async (e) => {
     e.preventDefault();
+
+    // ✅ double submit qoruması
+    if (loading) return;
+
     resetMsgs();
 
     const clean = otpCode.replace(/\D/g, "").slice(0, 6);
@@ -131,6 +138,10 @@ const AuthPage = ({ onAuthed }) => {
 
   const loginSubmit = async (e) => {
     e.preventDefault();
+
+    // ✅ double submit qoruması
+    if (loading) return;
+
     resetMsgs();
     setLoading(true);
 
@@ -150,7 +161,7 @@ const AuthPage = ({ onAuthed }) => {
 
   const resendOtp = async () => {
     if (resendLeft > 0 || loading) return;
-    await requestOtp(); 
+    await requestOtp();
     setInfo("Kod yenidən göndərildi.");
   };
 

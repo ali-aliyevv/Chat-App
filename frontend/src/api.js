@@ -1,7 +1,9 @@
 import axios from "axios";
 
+const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+
 export const api = axios.create({
-  baseURL: "http://localhost:3001",
+  baseURL: BASE_URL,
   withCredentials: true,
 });
 
@@ -25,19 +27,20 @@ api.interceptors.response.use(
 
     const isAuthEndpoint =
       url.includes("/api/login") ||
-      url.includes("/api/register") ||
       url.includes("/api/register/request-otp") ||
       url.includes("/api/register/verify-otp") ||
       url.includes("/api/refresh") ||
       url.includes("/api/logout") ||
       url.includes("/api/me");
 
+    // /api/me 401 normaldır
     if (status === 401 && url.includes("/api/me")) {
       return Promise.reject(error);
     }
 
     if (original._retry) return Promise.reject(error);
 
+    // digər endpointlərdə 401 gələrsə refresh elə
     if (status === 401 && !isAuthEndpoint) {
       original._retry = true;
 

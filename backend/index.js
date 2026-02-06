@@ -16,17 +16,25 @@ const {
   findUserByUsername,
   findUserByIdentifier,
   findUserById,
+
   storeRefreshToken,
   revokeRefreshToken,
   revokeAllRefreshTokensForUser,
   getRefreshTokenRecord,
   deleteExpiredRefreshTokens,
+
   addMessage,
   getRecentMessages,
+
+  // OTP DB helpers
+  upsertOtp,
+  getOtp,
+  deleteOtp,
+  deleteExpiredOtps,
 } = require("./db");
 
 const app = express();
-app.set("trust proxy", 1); 
+app.set("trust proxy", 1);
 const server = http.createServer(app);
 
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "http://localhost:5173";
@@ -48,8 +56,6 @@ app.use(
     credentials: true,
   })
 );
-
-const otpStore = new Map();
 
 function normalizeEmail(email) {
   return String(email || "").trim().toLowerCase();
@@ -84,8 +90,14 @@ function cookieOptions() {
 }
 
 function setAuthCookies(res, accessToken, refreshToken) {
-  res.cookie("access_token", accessToken, { ...cookieOptions(), maxAge: 15 * 60 * 1000 });
-  res.cookie("refresh_token", refreshToken, { ...cookieOptions(), maxAge: REFRESH_TTL_MS });
+  res.cookie("access_token", accessToken, {
+    ...cookieOptions(),
+    maxAge: 15 * 60 * 1000,
+  });
+  res.cookie("refresh_token", refreshToken, {
+    ...cookieOptions(),
+    maxAge: REFRESH_TTL_MS,
+  });
 }
 
 function clearAuthCookies(res) {
@@ -126,6 +138,7 @@ function makeOtpCode() {
 
 app.get("/health", (req, res) => res.json({ ok: true }));
 
+// REGISTER - REQUEST OTP
 app.post("/api/register/request-otp", async (req, res) => {
   const email = normalizeEmail(req.body?.email);
   const username = normalizeUsername(req.body?.username);
@@ -135,6 +148,9 @@ app.post("/api/register/request-otp", async (req, res) => {
   if (username.length < 3) return res.status(400).json({ message: "Username min 3 simvol" });
   if (password.length < 6) return res.status(400).json({ message: "Password min 6 simvol" });
 
+  // cleanup old OTPs
+  try { deleteExpiredOtps(); } catch {}
+
   if (findUserByEmail(email)) return res.status(409).json({ message: "Bu email artıq var" });
   if (findUserByUsername(username)) return res.status(409).json({ message: "Bu username artıq var" });
 
@@ -143,10 +159,12 @@ app.post("/api/register/request-otp", async (req, res) => {
   const code = makeOtpCode();
   const codeHash = await bcrypt.hash(code, 10);
 
-  otpStore.set(email, {
+  upsertOtp({
+    email,
     codeHash,
     expiresAt: Date.now() + OTP_TTL_MS,
-    pending: { email, username, passHash },
+    username,
+    passHash,
   });
 
   try {
@@ -156,9 +174,15 @@ app.post("/api/register/request-otp", async (req, res) => {
     return res.status(500).json({ message: "OTP email göndərilmədi" });
   }
 
-  return res.json({ ok: true, message: "OTP göndərildi", expiresInSec: Math.floor(OTP_TTL_MS / 1000) });
+  return res.json({
+    ok: true,
+    message: "OTP göndərildi",
+    expiresInSec: Math.floor(OTP_TTL_MS / 1000),
+  });
 });
 
+
+// REGISTER - VERIFY OTP
 app.post("/api/register/verify-otp", async (req, res) => {
   const email = normalizeEmail(req.body?.email);
   const code = String(req.body?.code || "").trim();
@@ -166,42 +190,66 @@ app.post("/api/register/verify-otp", async (req, res) => {
   if (!isEmailLike(email)) return res.status(400).json({ message: "Email düzgün deyil" });
   if (code.length !== 6) return res.status(400).json({ message: "OTP 6 rəqəm olmalıdır" });
 
-  const entry = otpStore.get(email);
+  const entry = getOtp(email);
+
+  console.log("VERIFY DEBUG:", {
+    email,
+    entryUsername: entry?.username,
+    hasOtp: !!entry,
+    emailExists: !!findUserByEmail(email),
+    usernameExists: entry ? !!findUserByUsername(entry.username) : null,
+    time: new Date().toISOString(),
+  });
+
   if (!entry) return res.status(400).json({ message: "OTP tapılmadı, yenidən göndər" });
 
   if (Date.now() > entry.expiresAt) {
-    otpStore.delete(email);
+    deleteOtp(email);
     return res.status(400).json({ message: "OTP vaxtı bitdi, yenidən göndər" });
   }
 
   const ok = await bcrypt.compare(code, entry.codeHash);
   if (!ok) return res.status(400).json({ message: "OTP yanlışdır" });
 
-  const { username, passHash } = entry.pending;
+  // ✅ 409 olanda OTP-ni silmirik
+  if (findUserByEmail(email)) {
+    return res.status(409).json({ message: "Bu email artıq var" });
+  }
+  if (findUserByUsername(entry.username)) {
+    return res.status(409).json({ message: "Bu username artıq var" });
+  }
 
-  if (findUserByEmail(email)) return res.status(409).json({ message: "Bu email artıq var" });
-  if (findUserByUsername(username)) return res.status(409).json({ message: "Bu username artıq var" });
-
-  const user = { id: randomUUID(), username, email, passHash };
+  const user = {
+    id: randomUUID(),
+    username: entry.username,
+    email,
+    passHash: entry.passHash,
+  };
 
   try {
     createUser(user);
-  } catch {
-    otpStore.delete(email);
-    return res.status(409).json({ message: "Bu email/username artıq var" });
+  } catch (e) {
+    console.log("❌ createUser error:", e?.message || e);
+    return res.status(500).json({ message: "DB error: " + (e?.message || e) });
   } finally {
-    otpStore.delete(email);
+    deleteOtp(email);
   }
 
   const access = signAccess(user);
   const refresh = signRefresh(user);
 
-  storeRefreshToken({ token: refresh, userId: user.id, expiresAt: Date.now() + REFRESH_TTL_MS });
+  storeRefreshToken({
+    token: refresh,
+    userId: user.id,
+    expiresAt: Date.now() + REFRESH_TTL_MS,
+  });
 
   setAuthCookies(res, access, refresh);
   return res.json({ id: user.id, username: user.username, email: user.email });
 });
 
+
+// LOGIN
 app.post("/api/login", async (req, res) => {
   const identifier = String(req.body?.identifier ?? req.body?.username ?? "").trim();
   const password = String(req.body?.password || "");
@@ -215,12 +263,17 @@ app.post("/api/login", async (req, res) => {
   const access = signAccess(user);
   const refresh = signRefresh(user);
 
-  storeRefreshToken({ token: refresh, userId: user.id, expiresAt: Date.now() + REFRESH_TTL_MS });
+  storeRefreshToken({
+    token: refresh,
+    userId: user.id,
+    expiresAt: Date.now() + REFRESH_TTL_MS,
+  });
 
   setAuthCookies(res, access, refresh);
   return res.json({ id: user.id, username: user.username, email: user.email });
 });
 
+// LOGOUT
 app.post("/api/logout", (req, res) => {
   const rt = req.cookies?.refresh_token;
   if (rt) revokeRefreshToken(rt);
@@ -229,6 +282,7 @@ app.post("/api/logout", (req, res) => {
   return res.json({ ok: true });
 });
 
+// LOGOUT ALL
 app.post("/api/logout-all", requireAuth, (req, res) => {
   revokeAllRefreshTokensForUser(req.user.sub);
 
@@ -236,6 +290,7 @@ app.post("/api/logout-all", requireAuth, (req, res) => {
   return res.json({ ok: true });
 });
 
+// REFRESH
 app.post("/api/refresh", (req, res) => {
   const rt = req.cookies?.refresh_token;
   if (!rt) return res.status(401).json({ message: "No refresh token" });
@@ -268,7 +323,11 @@ app.post("/api/refresh", (req, res) => {
   const newAccess = signAccess(user);
   const newRefresh = signRefresh(user);
 
-  storeRefreshToken({ token: newRefresh, userId: user.id, expiresAt: Date.now() + REFRESH_TTL_MS });
+  storeRefreshToken({
+    token: newRefresh,
+    userId: user.id,
+    expiresAt: Date.now() + REFRESH_TTL_MS,
+  });
 
   setAuthCookies(res, newAccess, newRefresh);
 
@@ -279,6 +338,7 @@ app.post("/api/refresh", (req, res) => {
   return res.json({ ok: true });
 });
 
+// ME
 app.get("/api/me", optionalAuth, (req, res) => {
   if (!req.user) {
     return res.json({ authenticated: false, id: null, username: null, email: null });
@@ -293,6 +353,7 @@ app.get("/api/me", optionalAuth, (req, res) => {
   });
 });
 
+// SOCKET.IO
 const io = new Server(server, {
   cors: {
     origin: FRONTEND_ORIGIN,
