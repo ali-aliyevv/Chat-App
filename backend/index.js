@@ -26,7 +26,6 @@ const {
   addMessage,
   getRecentMessages,
 
-  // OTP DB helpers
   upsertOtp,
   getOtp,
   deleteOtp,
@@ -138,7 +137,6 @@ function makeOtpCode() {
 
 app.get("/health", (req, res) => res.json({ ok: true }));
 
-// REGISTER - REQUEST OTP
 app.post("/api/register/request-otp", async (req, res) => {
   const email = normalizeEmail(req.body?.email);
   const username = normalizeUsername(req.body?.username);
@@ -148,7 +146,6 @@ app.post("/api/register/request-otp", async (req, res) => {
   if (username.length < 3) return res.status(400).json({ message: "Username min 3 simvol" });
   if (password.length < 6) return res.status(400).json({ message: "Password min 6 simvol" });
 
-  // cleanup old OTPs
   try { deleteExpiredOtps(); } catch {}
 
   if (findUserByEmail(email)) return res.status(409).json({ message: "Bu email artıq var" });
@@ -182,7 +179,6 @@ app.post("/api/register/request-otp", async (req, res) => {
 });
 
 
-// REGISTER - VERIFY OTP
 app.post("/api/register/verify-otp", async (req, res) => {
   const email = normalizeEmail(req.body?.email);
   const code = String(req.body?.code || "").trim();
@@ -211,7 +207,6 @@ app.post("/api/register/verify-otp", async (req, res) => {
   const ok = await bcrypt.compare(code, entry.codeHash);
   if (!ok) return res.status(400).json({ message: "OTP yanlışdır" });
 
-  // ✅ 409 olanda OTP-ni silmirik
   if (findUserByEmail(email)) {
     return res.status(409).json({ message: "Bu email artıq var" });
   }
@@ -249,7 +244,6 @@ app.post("/api/register/verify-otp", async (req, res) => {
 });
 
 
-// LOGIN
 app.post("/api/login", async (req, res) => {
   const identifier = String(req.body?.identifier ?? req.body?.username ?? "").trim();
   const password = String(req.body?.password || "");
@@ -273,7 +267,6 @@ app.post("/api/login", async (req, res) => {
   return res.json({ id: user.id, username: user.username, email: user.email });
 });
 
-// LOGOUT
 app.post("/api/logout", (req, res) => {
   const rt = req.cookies?.refresh_token;
   if (rt) revokeRefreshToken(rt);
@@ -282,7 +275,6 @@ app.post("/api/logout", (req, res) => {
   return res.json({ ok: true });
 });
 
-// LOGOUT ALL
 app.post("/api/logout-all", requireAuth, (req, res) => {
   revokeAllRefreshTokensForUser(req.user.sub);
 
@@ -290,7 +282,6 @@ app.post("/api/logout-all", requireAuth, (req, res) => {
   return res.json({ ok: true });
 });
 
-// REFRESH
 app.post("/api/refresh", (req, res) => {
   const rt = req.cookies?.refresh_token;
   if (!rt) return res.status(401).json({ message: "No refresh token" });
@@ -338,7 +329,6 @@ app.post("/api/refresh", (req, res) => {
   return res.json({ ok: true });
 });
 
-// ME
 app.get("/api/me", optionalAuth, (req, res) => {
   if (!req.user) {
     return res.json({ authenticated: false, id: null, username: null, email: null });
@@ -353,7 +343,6 @@ app.get("/api/me", optionalAuth, (req, res) => {
   });
 });
 
-// SOCKET.IO
 const io = new Server(server, {
   cors: {
     origin: FRONTEND_ORIGIN,

@@ -90,7 +90,6 @@ function isEmailLike(s) {
   return /.+@.+\..+/.test(String(s || "").trim());
 }
 
-// USERS
 function createUser({ id, username, email, passHash }) {
   db.prepare(`
     INSERT INTO users (id, username, email, pass_hash, created_at)
@@ -138,7 +137,6 @@ function findUserByIdentifier(identifier) {
   return findUserByUsername(id) || findUserByEmail(id);
 }
 
-// REFRESH TOKENS
 function storeRefreshToken({ token, userId, expiresAt }) {
   db.prepare(`
     INSERT OR REPLACE INTO refresh_tokens (token, user_id, created_at, expires_at, revoked_at)
@@ -181,7 +179,6 @@ function deleteExpiredRefreshTokens() {
   `).run(Date.now());
 }
 
-// OTP (DB)
 function upsertOtp({ email, codeHash, expiresAt, username, passHash }) {
   db.prepare(`
     INSERT INTO otp_codes (email, code_hash, expires_at, username, pass_hash)
@@ -218,7 +215,6 @@ function deleteExpiredOtps() {
   db.prepare(`DELETE FROM otp_codes WHERE expires_at < ?`).run(Date.now());
 }
 
-// MESSAGES
 function addMessage({ id, room, clientId, username, text, system, createdAt }) {
   db.prepare(`
     INSERT INTO messages (id, room, client_id, username, text, system, created_at)

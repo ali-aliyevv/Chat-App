@@ -33,14 +33,12 @@ api.interceptors.response.use(
       url.includes("/api/logout") ||
       url.includes("/api/me");
 
-    // /api/me 401 normaldır
     if (status === 401 && url.includes("/api/me")) {
       return Promise.reject(error);
     }
 
     if (original._retry) return Promise.reject(error);
 
-    // digər endpointlərdə 401 gələrsə refresh elə
     if (status === 401 && !isAuthEndpoint) {
       original._retry = true;
 

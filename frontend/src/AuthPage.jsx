@@ -81,7 +81,6 @@ const AuthPage = ({ onAuthed }) => {
   const requestOtp = async (e) => {
     if (e?.preventDefault) e.preventDefault();
 
-    // ✅ double submit qoruması
     if (loading) return;
 
     resetMsgs();
@@ -109,7 +108,6 @@ const AuthPage = ({ onAuthed }) => {
   const verifyOtp = async (e) => {
     e.preventDefault();
 
-    // ✅ double submit qoruması
     if (loading) return;
 
     resetMsgs();
@@ -139,7 +137,6 @@ const AuthPage = ({ onAuthed }) => {
   const loginSubmit = async (e) => {
     e.preventDefault();
 
-    // ✅ double submit qoruması
     if (loading) return;
 
     resetMsgs();
