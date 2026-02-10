@@ -1,6 +1,6 @@
 import { io } from "socket.io-client";
 
-const URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+const URL = import.meta.env.VITE_API_URL || "https://your-render-url.onrender.com";
 
 export const socket = io(URL, {
   withCredentials: true,
