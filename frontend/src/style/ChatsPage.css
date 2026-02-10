@@ -35,8 +35,14 @@ body {
   display:flex;
   align-items:flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 16px;
   border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .chat-top > div:first-child {   
+  min-width: 0;              
+  flex: 1;                      
+  overflow: hidden;             
 }
 
 .chat-title{
@@ -44,6 +50,9 @@ body {
   font-weight: 900;
   letter-spacing: -0.3px;
   color: rgba(255,255,255,0.92);
+  white-space: nowrap;          
+  overflow: hidden;            
+  text-overflow: ellipsis;
 }
 .chat-subtitle{
   margin-top: 4px;
