@@ -157,6 +157,9 @@ body {
   display:flex;
   flex-direction: column;
   max-width: 70%;
+  flex-direction: column;
+  max-width: 70%;              
+  min-width: 0;
 }
 .msg.mine{ align-self: flex-end; }
 .msg.theirs{ align-self: flex-start; }
@@ -179,6 +182,10 @@ body {
   background: rgba(0,0,0,0.22);
   color: rgba(255,255,255,0.92);
   line-height: 1.35;
+  word-wrap: break-word;      
+  overflow-wrap: break-word;      
+  hyphens: auto;                  
+  word-break: break-word;
 }
 
 .msg.mine .msg-bubble{
