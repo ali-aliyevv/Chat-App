@@ -164,14 +164,6 @@ const AuthPage = ({ onAuthed }) => {
 
   return (
     <div className="auth-shell">
-      <div className="fx-bg" aria-hidden="true">
-        <div className="fx-blob fx-blob--a" />
-        <div className="fx-blob fx-blob--b" />
-        <div className="fx-blob fx-blob--c" />
-        <div className="fx-grid" />
-        <div className="fx-noise" />
-      </div>
-
       <div className="auth-card">
         <div className="auth-badge">REAL-TIME CHAT</div>
 

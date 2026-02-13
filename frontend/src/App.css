@@ -25,3 +25,28 @@ body{
   position: relative;
   z-index: 1;
 }
+
+@media (max-width: 768px) {
+  .fx-bg .fx-blob {
+    width: 200px;
+    height: 200px;
+    filter: blur(20px);
+    opacity: 0.3;
+    animation: none;
+  }
+  .fx-bg .fx-grid {
+    animation: none;
+    opacity: 0.08;
+  }
+  .fx-bg .fx-noise {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
