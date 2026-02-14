@@ -1,57 +1,20 @@
 require("dotenv").config();
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 
 // ========================
-// SMTP CONFIG
+// RESEND CONFIG (HTTP API — Render-da SMTP bloklanmir)
 // ========================
 
-const SMTP_HOST = process.env.SMTP_HOST;
-const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
-const SMTP_USER = process.env.SMTP_USER;
-const SMTP_PASS = process.env.SMTP_PASS;
-const SMTP_FROM = process.env.SMTP_FROM;
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const EMAIL_FROM = process.env.EMAIL_FROM || "RealChat <onboarding@resend.dev>";
 
-// port-a görə secure avtomatik seçilir
-const isSecure = SMTP_PORT === 465;
-
-// transporter yarat
-const transporter = nodemailer.createTransport({
-  host: SMTP_HOST,
-  port: SMTP_PORT,
-  secure: isSecure,
-
-  auth: {
-    user: SMTP_USER,
-    pass: SMTP_PASS,
-  },
-
-  // STARTTLS üçün lazımdır (port 587)
-  requireTLS: !isSecure,
-
-  // timeout-lar (Render üçün çox vacibdir)
-  connectionTimeout: 10000,
-  greetingTimeout: 10000,
-  socketTimeout: 10000,
-});
-
-// ========================
-// SMTP VERIFY (server start zamanı)
-// ========================
-
-async function verifySMTP() {
-  try {
-    await transporter.verify();
-    console.log("✅ SMTP ready");
-    console.log("Host:", SMTP_HOST);
-    console.log("Port:", SMTP_PORT);
-    console.log("Secure:", isSecure);
-  } catch (error) {
-    console.error("❌ SMTP verify error:", error.message);
-  }
+if (!RESEND_API_KEY) {
+  console.error("❌ RESEND_API_KEY environment variable is not set!");
+} else {
+  console.log("✅ Resend API ready");
 }
 
-// dərhal yoxla
-verifySMTP();
+const resend = new Resend(RESEND_API_KEY);
 
 // ========================
 // SEND OTP EMAIL
@@ -59,9 +22,9 @@ verifySMTP();
 
 async function sendOtpEmail(toEmail, otp) {
   try {
-    const info = await transporter.sendMail({
-      from: SMTP_FROM,
-      to: toEmail,
+    const { data, error } = await resend.emails.send({
+      from: EMAIL_FROM,
+      to: [toEmail],
       subject: "OTP Code — RealChat",
 
       text: `Your OTP code is: ${otp}. This code expires in 5 minutes.`,
@@ -102,8 +65,13 @@ async function sendOtpEmail(toEmail, otp) {
       `,
     });
 
+    if (error) {
+      console.error("❌ Resend API error:", error.message || JSON.stringify(error));
+      throw new Error(error.message || "Resend API error");
+    }
+
     console.log("✅ OTP email göndərildi:", toEmail);
-    console.log("Message ID:", info.messageId);
+    console.log("Email ID:", data?.id);
 
     return true;
   } catch (error) {
