@@ -46,11 +46,22 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT,
     text TEXT NOT NULL,
     system INTEGER NOT NULL DEFAULT 0,
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    edited_at INTEGER,
+    deleted_for_all INTEGER NOT NULL DEFAULT 0,
+    reply_to TEXT,
+    read_at INTEGER
   );
 
   CREATE INDEX IF NOT EXISTS idx_messages_room_time
     ON messages(room, created_at DESC);
+
+  -- DELETED MESSAGES (per-user "delete for me")
+  CREATE TABLE IF NOT EXISTS deleted_messages (
+    user_id TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    PRIMARY KEY (user_id, message_id)
+  );
 
   -- OTP (persist; survives restart)
   CREATE TABLE IF NOT EXISTS otp_codes (
@@ -76,6 +87,19 @@ function ensureColumn(table, column, sqlType) {
 try {
   ensureColumn("refresh_tokens", "revoked_at", "INTEGER");
   ensureColumn("messages", "client_id", "TEXT");
+  ensureColumn("messages", "edited_at", "INTEGER");
+  ensureColumn("messages", "deleted_for_all", "INTEGER DEFAULT 0");
+  ensureColumn("messages", "reply_to", "TEXT");
+  ensureColumn("messages", "read_at", "INTEGER");
+
+  // Ensure deleted_messages table exists for older DBs
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS deleted_messages (
+      user_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      PRIMARY KEY (user_id, message_id)
+    );
+  `);
 } catch (e) {
   console.log("❌ Migration error:", e?.message || e);
 }
@@ -215,10 +239,10 @@ function deleteExpiredOtps() {
   db.prepare(`DELETE FROM otp_codes WHERE expires_at < ?`).run(Date.now());
 }
 
-function addMessage({ id, room, clientId, username, text, system, createdAt }) {
+function addMessage({ id, room, clientId, username, text, system, createdAt, replyTo }) {
   db.prepare(`
-    INSERT INTO messages (id, room, client_id, username, text, system, created_at)
-    VALUES (@id, @room, @client_id, @username, @text, @system, @created_at)
+    INSERT INTO messages (id, room, client_id, username, text, system, created_at, reply_to)
+    VALUES (@id, @room, @client_id, @username, @text, @system, @created_at, @reply_to)
   `).run({
     id: String(id),
     room: String(room),
@@ -227,6 +251,7 @@ function addMessage({ id, room, clientId, username, text, system, createdAt }) {
     text: String(text),
     system: system ? 1 : 0,
     created_at: typeof createdAt === "number" ? createdAt : Date.now(),
+    reply_to: replyTo ? String(replyTo) : null,
   });
 }
 
@@ -234,7 +259,10 @@ function getRecentMessages(room, limit = 50) {
   const rows = db
     .prepare(
       `
-      SELECT id, room, client_id as clientId, username, text, system, created_at as createdAt
+      SELECT id, room, client_id as clientId, username, text, system,
+             created_at as createdAt, edited_at as editedAt,
+             deleted_for_all as deletedForAll, reply_to as replyTo,
+             read_at as readAt
       FROM messages
       WHERE room = ?
       ORDER BY created_at DESC
@@ -244,6 +272,56 @@ function getRecentMessages(room, limit = 50) {
     .all(String(room), Number(limit));
 
   return rows.reverse();
+}
+
+function getMessageById(id) {
+  return db
+    .prepare(
+      `SELECT id, room, client_id as clientId, username, text, system,
+              created_at as createdAt, edited_at as editedAt,
+              deleted_for_all as deletedForAll, reply_to as replyTo,
+              read_at as readAt
+       FROM messages WHERE id = ?`
+    )
+    .get(String(id));
+}
+
+function updateMessageText(id, newText) {
+  db.prepare(
+    `UPDATE messages SET text = ?, edited_at = ? WHERE id = ?`
+  ).run(String(newText), Date.now(), String(id));
+}
+
+function softDeleteMessageForAll(id) {
+  db.prepare(
+    `UPDATE messages SET deleted_for_all = 1 WHERE id = ?`
+  ).run(String(id));
+}
+
+function deleteMessageForUser(userId, messageId) {
+  db.prepare(
+    `INSERT OR IGNORE INTO deleted_messages (user_id, message_id) VALUES (?, ?)`
+  ).run(String(userId), String(messageId));
+}
+
+function getDeletedMessageIdsForUser(userId, room) {
+  const rows = db
+    .prepare(
+      `SELECT dm.message_id as messageId
+       FROM deleted_messages dm
+       JOIN messages m ON m.id = dm.message_id
+       WHERE dm.user_id = ? AND m.room = ?`
+    )
+    .all(String(userId), String(room));
+  return new Set(rows.map((r) => r.messageId));
+}
+
+function setMessagesReadAt(room, senderUsername, readUpTo) {
+  db.prepare(
+    `UPDATE messages
+     SET read_at = ?
+     WHERE room = ? AND username = ? AND created_at <= ? AND read_at IS NULL AND system = 0`
+  ).run(Number(readUpTo), String(room), String(senderUsername), Number(readUpTo));
 }
 
 module.exports = {
@@ -268,4 +346,10 @@ module.exports = {
 
   addMessage,
   getRecentMessages,
+  getMessageById,
+  updateMessageText,
+  softDeleteMessageForAll,
+  deleteMessageForUser,
+  getDeletedMessageIdsForUser,
+  setMessagesReadAt,
 };

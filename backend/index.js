@@ -25,6 +25,12 @@ const {
 
   addMessage,
   getRecentMessages,
+  getMessageById,
+  updateMessageText,
+  softDeleteMessageForAll,
+  deleteMessageForUser,
+  getDeletedMessageIdsForUser,
+  setMessagesReadAt,
 
   upsertOtp,
   getOtp,
@@ -393,7 +399,43 @@ io.on("connection", (socket) => {
     if (!roomUsers.has(r)) roomUsers.set(r, new Set());
     roomUsers.get(r).add(u);
 
-    const history = getRecentMessages(r, 50);
+    const rawHistory = getRecentMessages(r, 50);
+    const deletedForMe = getDeletedMessageIdsForUser(socket.user.id, r);
+
+    // Build a map for reply lookups
+    const msgMap = new Map();
+    rawHistory.forEach((m) => msgMap.set(m.id, m));
+
+    const history = rawHistory
+      .filter((m) => !deletedForMe.has(m.id))
+      .map((m) => {
+        // Attach replyToData
+        let replyToData = null;
+        if (m.replyTo) {
+          const replied = msgMap.get(m.replyTo) || getMessageById(m.replyTo);
+          if (replied && !replied.deletedForAll) {
+            replyToData = {
+              id: replied.id,
+              username: replied.username,
+              text: replied.text.length > 80
+                ? replied.text.slice(0, 80) + "..."
+                : replied.text,
+            };
+          }
+        }
+
+        // If deleted for all, mask the text
+        if (m.deletedForAll) {
+          return {
+            ...m,
+            text: "Bu mesaj silindi",
+            replyToData: null,
+          };
+        }
+
+        return { ...m, replyToData };
+      });
+
     socket.emit("room:history", history);
 
     socket.emit("room:joined", {
@@ -417,10 +459,25 @@ io.on("connection", (socket) => {
     emitUsers(r);
   });
 
-  socket.on("message:send", ({ room, text, clientId }) => {
+  socket.on("message:send", ({ room, text, clientId, replyTo }) => {
     const r = String(room || socket.data.room || "general").trim() || "general";
     const t = String(text || "").trim();
     if (!t) return;
+
+    // If replying, fetch the replied-to message summary
+    let replyToData = null;
+    if (replyTo) {
+      const repliedMsg = getMessageById(String(replyTo));
+      if (repliedMsg && !repliedMsg.deletedForAll) {
+        replyToData = {
+          id: repliedMsg.id,
+          username: repliedMsg.username,
+          text: repliedMsg.text.length > 80
+            ? repliedMsg.text.slice(0, 80) + "..."
+            : repliedMsg.text,
+        };
+      }
+    }
 
     const msg = {
       id: randomUUID(),
@@ -430,6 +487,11 @@ io.on("connection", (socket) => {
       text: t,
       system: false,
       createdAt: Date.now(),
+      replyTo: replyTo ? String(replyTo) : null,
+      replyToData,
+      editedAt: null,
+      deletedForAll: 0,
+      readAt: null,
     };
 
     addMessage(msg);
@@ -441,12 +503,76 @@ io.on("connection", (socket) => {
   socket.on("message:read", ({ room, readUpTo }) => {
     const r = String(room || socket.data.room || "general").trim() || "general";
     if (!readUpTo) return;
-    socket.to(r).emit("message:seen", { readUpTo });
+
+    // Mark messages as read in DB - the reader is not the sender, so find
+    // messages from other users that were sent up to this timestamp
+    try {
+      // We mark all non-system messages from other users in this room as read
+      // The reader is socket.user.username, so we need to find messages NOT by this user
+      const readAt = Date.now();
+      const db = require("./db").db;
+      db.prepare(
+        `UPDATE messages
+         SET read_at = ?
+         WHERE room = ? AND username != ? AND created_at <= ? AND read_at IS NULL AND system = 0`
+      ).run(readAt, r, socket.user.username, Number(readUpTo));
+
+      socket.to(r).emit("message:seen", { readUpTo, readAt, reader: socket.user.username });
+    } catch (e) {
+      console.log("read_at update error:", e?.message || e);
+      socket.to(r).emit("message:seen", { readUpTo });
+    }
   });
 
   socket.on("typing", ({ room, isTyping }) => {
     const r = String(room || socket.data.room || "general").trim() || "general";
     socket.to(r).emit("typing", { username: socket.user.username, isTyping: !!isTyping });
+  });
+
+  socket.on("message:edit", ({ messageId, newText }) => {
+    if (!messageId || !newText) return;
+    const msg = getMessageById(String(messageId));
+    if (!msg) return;
+    if (msg.username !== socket.user.username) return; // can only edit own messages
+    if (msg.system) return; // cannot edit system messages
+    if (msg.deletedForAll) return; // cannot edit deleted messages
+
+    const trimmed = String(newText).trim();
+    if (!trimmed) return;
+
+    updateMessageText(msg.id, trimmed);
+    const editedAt = Date.now();
+
+    io.to(msg.room).emit("message:edited", {
+      messageId: msg.id,
+      newText: trimmed,
+      editedAt,
+    });
+  });
+
+  socket.on("message:delete", ({ messageId, deleteFor }) => {
+    if (!messageId) return;
+    const msg = getMessageById(String(messageId));
+    if (!msg) return;
+
+    if (deleteFor === "everyone") {
+      // Only message owner can delete for everyone
+      if (msg.username !== socket.user.username) return;
+      if (msg.system) return;
+
+      softDeleteMessageForAll(msg.id);
+      io.to(msg.room).emit("message:deleted", {
+        messageId: msg.id,
+        deletedFor: "everyone",
+      });
+    } else {
+      // Delete for me - any user can do this for any message
+      deleteMessageForUser(socket.user.id, msg.id);
+      socket.emit("message:deleted", {
+        messageId: msg.id,
+        deletedFor: "me",
+      });
+    }
   });
 
   socket.on("disconnect", () => {
