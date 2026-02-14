@@ -175,15 +175,29 @@ const AuthPage = ({ onAuthed, pendingRoom }) => {
     setInviteRoom("");
     setInviteUrl("");
 
+    const roomName = `room_${Date.now().toString(36)}`;
+
     try {
-      const r = await api.post("/api/rooms/create");
-      const newRoom = String(r.data?.room || "").trim();
-      const url = String(r.data?.inviteUrl || "").trim();
+      const r = await api.post("/api/rooms/create", { name: roomName });
+      const roomId = String(r.data?.id || "").trim();
+      const name = String(r.data?.name || roomName).trim();
 
-      setInviteRoom(newRoom);
-      setInviteUrl(url);
+      setInviteRoom(name);
+      if (name) setRoom(name);
 
-      if (newRoom) setRoom(newRoom);
+      try {
+        const inv = await api.post("/api/invites/create", {
+          roomId,
+          expirationDays: 7,
+        });
+        const token = String(inv.data?.inviteToken || "").trim();
+        if (token) {
+          const origin = window.location.origin;
+          setInviteUrl(`${origin}/?invite=${encodeURIComponent(token)}`);
+        }
+      } catch (e3) {
+        setInviteErr(e3.response?.data?.message || e3.message || "Invite create failed");
+      }
     } catch (e2) {
       setInviteErr(e2.response?.data?.message || e2.message || "Room create failed");
     }

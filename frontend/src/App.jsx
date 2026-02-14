@@ -11,12 +11,13 @@ export default function App() {
 
   const resolveInviteIfAny = useCallback(async () => {
     const params = new URLSearchParams(window.location.search);
-    const invite = params.get("invite");
-    if (!invite) return null;
+    const inviteToken = params.get("invite");
+    if (!inviteToken) return null;
 
     try {
-      const r = await api.get("/api/invites/resolve", { params: { invite } });
-      const room = String(r.data?.room || "general").trim() || "general";
+      const r = await api.post("/api/invites/resolve", { inviteToken });
+      const roomData = r.data?.room;
+      const room = String(roomData?.name || roomData?.id || "general").trim() || "general";
       setPendingRoom(room);
       return room;
     } finally {

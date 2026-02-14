@@ -37,6 +37,17 @@ const {
   getOtp,
   deleteOtp,
   deleteExpiredOtps,
+
+  createRoom,
+  findRoomById,
+  findRoomByName,
+  softDeleteRoom,
+  cleanupOldRooms,
+
+  createInvite,
+  findInviteByToken,
+  incrementInviteUsedCount,
+  cleanupExpiredInvites,
 } = require("./db");
 
 const app = express();
@@ -46,9 +57,6 @@ const server = http.createServer(app);
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "http://localhost:5173";
 const ACCESS_SECRET = process.env.ACCESS_SECRET || "ACCESS_SECRET_CHANGE_ME";
 const REFRESH_SECRET = process.env.REFRESH_SECRET || "REFRESH_SECRET_CHANGE_ME";
-
-const INVITE_SECRET = process.env.INVITE_SECRET || "INVITE_SECRET_CHANGE_ME";
-const INVITE_EXPIRES_IN = "10m";
 
 const ACCESS_EXPIRES_IN = "15m";
 const REFRESH_EXPIRES_IN = "7d";
@@ -88,8 +96,12 @@ function signRefresh(user) {
   });
 }
 
-function signInvite(room) {
-  return jwt.sign({ room }, INVITE_SECRET, { expiresIn: INVITE_EXPIRES_IN });
+function generateInviteToken(len = 16) {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let out = "";
+  const bytes = require("crypto").randomBytes(len);
+  for (let i = 0; i < len; i++) out += chars[bytes[i] % chars.length];
+  return out;
 }
 
 function cookieOptions() {
@@ -151,29 +163,81 @@ function makeOtpCode() {
 
 app.get("/health", (req, res) => res.json({ ok: true }));
 
-app.post("/api/rooms/create", (req, res) => {
-  const room = `room_${randomUUID().slice(0, 8)}`;
-  const token = signInvite(room);
+/* ── Room Management (API docs) ── */
 
-  const origin =
-    process.env.FRONTEND_ORIGIN ||
-    (req.headers.origin ? String(req.headers.origin) : "http://localhost:5173");
+app.post("/api/rooms/create", requireAuth, (req, res) => {
+  const name = String(req.body?.name || "").trim();
+  if (!name) return res.status(400).json({ message: "Room name required" });
 
-  const inviteUrl = `${origin.replace(/\/$/, "")}/?invite=${encodeURIComponent(token)}`;
+  const existing = findRoomByName(name);
+  if (existing) return res.status(409).json({ message: "Room name already exists" });
 
-  return res.json({ room, inviteUrl, expiresIn: INVITE_EXPIRES_IN });
+  const id = randomUUID();
+  createRoom({ id, name, creatorId: req.user.sub });
+
+  return res.json({ id, name });
 });
 
-app.get("/api/invites/resolve", (req, res) => {
-  const token = String(req.query.invite || "");
-  if (!token) return res.status(400).json({ message: "Missing invite token" });
+app.delete("/api/rooms/:roomId", requireAuth, (req, res) => {
+  const roomId = String(req.params.roomId);
+  const room = findRoomById(roomId);
+  if (!room) return res.status(404).json({ message: "Room not found" });
 
-  try {
-    const payload = jwt.verify(token, INVITE_SECRET);
-    return res.json({ room: payload.room });
-  } catch {
-    return res.status(400).json({ message: "Invalid/expired invite token" });
+  softDeleteRoom(roomId);
+  return res.json({ ok: true });
+});
+
+/* ── Invite / Share System (API docs) ── */
+
+app.post("/api/invites/create", requireAuth, (req, res) => {
+  const roomId = String(req.body?.roomId || "").trim();
+  const expirationDays = Number(req.body?.expirationDays) || 7;
+
+  if (!roomId) return res.status(400).json({ message: "roomId required" });
+
+  const room = findRoomById(roomId);
+  if (!room) return res.status(404).json({ message: "Room not found" });
+
+  const inviteToken = generateInviteToken(16);
+  const expiresAt = Date.now() + expirationDays * 24 * 60 * 60 * 1000;
+
+  createInvite({
+    id: randomUUID(),
+    roomId,
+    inviteToken,
+    createdBy: req.user.sub,
+    expiresAt,
+  });
+
+  return res.json({ inviteToken, expiresAt, roomId });
+});
+
+app.post("/api/invites/resolve", requireAuth, (req, res) => {
+  const inviteToken = String(req.body?.inviteToken || "").trim();
+  if (!inviteToken) return res.status(400).json({ message: "inviteToken required" });
+
+  const invite = findInviteByToken(inviteToken);
+  if (!invite) return res.status(404).json({ message: "Invite not found" });
+
+  if (invite.expiresAt && Date.now() > invite.expiresAt) {
+    return res.status(400).json({ message: "Invite expired" });
   }
+
+  const room = findRoomById(invite.roomId);
+  if (!room) return res.status(404).json({ message: "Room not found or deleted" });
+
+  incrementInviteUsedCount(inviteToken);
+
+  return res.json({ room: { id: room.id, name: room.name } });
+});
+
+/* ── Maintenance (API docs) ── */
+
+app.post("/api/cleanup/old-rooms", (req, res) => {
+  const SIX_MONTHS_MS = 6 * 30 * 24 * 60 * 60 * 1000;
+  cleanupOldRooms(SIX_MONTHS_MS);
+  cleanupExpiredInvites();
+  return res.json({ ok: true });
 });
 
 
@@ -423,20 +487,39 @@ io.on("connection", (socket) => {
     const history = rawHistory
       .filter((m) => !deletedForMe.has(m.id))
       .map((m) => {
-        let replyToData = null;
-        if (m.replyTo) {
-          const replied = msgMap.get(m.replyTo) || getMessageById(m.replyTo);
+        let replyToObj = null;
+        const replyToId = m.replyTo || null;
+
+        if (replyToId) {
+          const replied = msgMap.get(replyToId) || getMessageById(replyToId);
           if (replied && !replied.deletedForAll) {
-            replyToData = {
+            replyToObj = {
               id: replied.id,
+              userId: replied.userId || null,
               username: replied.username,
               text: replied.text.length > 80 ? replied.text.slice(0, 80) + "..." : replied.text,
+              createdAt: replied.createdAt,
             };
           }
         }
 
-        if (m.deletedForAll) return { ...m, text: "Bu mesaj silindi", replyToData: null };
-        return { ...m, replyToData };
+        const out = {
+          id: m.id,
+          room: m.room,
+          userId: m.userId || null,
+          username: m.username,
+          text: m.deletedForAll ? "Bu mesaj silindi" : m.text,
+          createdAt: m.createdAt,
+          editedAt: m.editedAt || null,
+          deletedAt: m.deletedAt || null,
+          deletedForAll: m.deletedForAll || 0,
+          replyToId,
+          replyTo: m.deletedForAll ? null : replyToObj,
+          clientId: m.clientId || null,
+          system: m.system || 0,
+        };
+
+        return out;
       });
 
     socket.emit("room:history", history);
@@ -457,19 +540,21 @@ io.on("connection", (socket) => {
     emitUsers(r);
   });
 
-  socket.on("message:send", ({ room, text, clientId, replyTo }) => {
+  socket.on("message:send", ({ room, text, clientId, replyToId }) => {
     const r = String(room || socket.data.room || "general").trim() || "general";
     const t = String(text || "").trim();
     if (!t) return;
 
     let replyToData = null;
-    if (replyTo) {
-      const repliedMsg = getMessageById(String(replyTo));
+    if (replyToId) {
+      const repliedMsg = getMessageById(String(replyToId));
       if (repliedMsg && !repliedMsg.deletedForAll) {
         replyToData = {
           id: repliedMsg.id,
+          userId: repliedMsg.userId || null,
           username: repliedMsg.username,
           text: repliedMsg.text.length > 80 ? repliedMsg.text.slice(0, 80) + "..." : repliedMsg.text,
+          createdAt: repliedMsg.createdAt,
         };
       }
     }
@@ -477,19 +562,30 @@ io.on("connection", (socket) => {
     const msg = {
       id: randomUUID(),
       room: r,
+      userId: socket.user.id,
       clientId: clientId ? String(clientId) : null,
       username: socket.user.username,
       text: t,
       system: false,
       createdAt: Date.now(),
-      replyTo: replyTo ? String(replyTo) : null,
-      replyToData,
+      replyToId: replyToId ? String(replyToId) : null,
+      replyTo: replyToData,
       editedAt: null,
+      deletedAt: null,
       deletedForAll: 0,
-      readAt: null,
     };
 
-    addMessage(msg);
+    addMessage({
+      id: msg.id,
+      room: msg.room,
+      clientId: msg.clientId,
+      username: msg.username,
+      text: msg.text,
+      system: false,
+      createdAt: msg.createdAt,
+      replyTo: msg.replyToId,
+    });
+
     io.to(r).emit("message:new", msg);
     socket.emit("message:delivered", { clientId: msg.clientId, messageId: msg.id });
   });
@@ -499,12 +595,29 @@ io.on("connection", (socket) => {
     if (!readUpTo) return;
 
     try {
-      const readAt = markReadForRoomExceptUser(r, socket.user.username, readUpTo);
-      socket.to(r).emit("message:seen", { readUpTo, readAt, reader: socket.user.username });
+      markReadForRoomExceptUser(r, socket.user.username, readUpTo);
+      socket.to(r).emit("message:seen", {
+        readUpTo,
+        statuses: [{ messageId: readUpTo, userId: socket.user.id, status: "seen" }],
+      });
     } catch (e) {
       console.log("read_at update error:", e?.message || e);
-      socket.to(r).emit("message:seen", { readUpTo });
+      socket.to(r).emit("message:seen", {
+        readUpTo,
+        statuses: [{ messageId: readUpTo, userId: socket.user.id, status: "seen" }],
+      });
     }
+  });
+
+  socket.on("message:status", ({ messageId, status }) => {
+    if (!messageId || !status) return;
+    const r = socket.data.room;
+    if (!r) return;
+
+    socket.to(r).emit("message:status-update", {
+      messageId,
+      statuses: [{ messageId, userId: socket.user.id, status }],
+    });
   });
 
   socket.on("typing", ({ room, isTyping }) => {
@@ -529,25 +642,31 @@ io.on("connection", (socket) => {
     updateMessageText(msg.id, trimmed);
     const editedAt = Date.now();
 
-    io.to(msg.room).emit("message:edited", { messageId: msg.id, newText: trimmed, editedAt });
+    const updated = {
+      ...msg,
+      text: trimmed,
+      editedAt,
+    };
+
+    io.to(msg.room).emit("message:edited", updated);
   });
 
-  socket.on("message:delete", ({ messageId, deleteFor }) => {
+  socket.on("message:delete", ({ messageId, deleteForAll }) => {
     if (!messageId) return;
 
     let msg = getMessageById(String(messageId));
     if (!msg) msg = getMessageByClientId(String(messageId));
     if (!msg) return;
 
-    if (deleteFor === "everyone") {
+    if (deleteForAll) {
       if (msg.username !== socket.user.username) return;
       if (msg.system) return;
 
       softDeleteMessageForAll(msg.id);
-      io.to(msg.room).emit("message:deleted", { messageId: msg.id, deletedFor: "everyone" });
+      io.to(msg.room).emit("message:deleted-all", { messageId: msg.id });
     } else {
       deleteMessageForUser(socket.user.id, msg.id);
-      socket.emit("message:deleted", { messageId: msg.id, deletedFor: "me" });
+      socket.emit("message:deleted-me", { messageId: msg.id });
     }
   });
 

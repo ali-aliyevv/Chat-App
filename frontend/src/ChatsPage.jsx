@@ -268,7 +268,7 @@ const ChatsPage = ({ user, onLogout }) => {
       });
     };
 
-    const onSeen = ({ readUpTo, readAt }) => {
+    const onSeen = ({ readUpTo }) => {
       if (!mounted) return;
       if (!readUpTo) return;
 
@@ -281,38 +281,40 @@ const ChatsPage = ({ user, onLogout }) => {
           const rt = typeof readUpTo === "number" ? readUpTo : Date.parse(readUpTo || 0);
 
           if ((mt || 0) <= (rt || 0)) {
-            return { ...m, status: "seen", readAt: readAt || Date.now() };
+            return { ...m, status: "seen", readAt: Date.now() };
           }
           return m;
         })
       );
     };
 
-    const onMessageEdited = ({ messageId, newText, editedAt }) => {
+    const onMessageEdited = (updatedMsg) => {
       if (!mounted) return;
+      const mid = String(updatedMsg?.id || "");
+      if (!mid) return;
       setMessages((prev) =>
         prev.map((m) =>
-          String(m.id) === String(messageId)
-            ? { ...m, text: newText, editedAt }
+          String(m.id) === mid
+            ? { ...m, text: updatedMsg.text, editedAt: updatedMsg.editedAt }
             : m
         )
       );
     };
 
-    const onMessageDeleted = ({ messageId, deletedFor }) => {
+    const onMessageDeletedMe = ({ messageId }) => {
       if (!mounted) return;
+      setMessages((prev) => prev.filter((m) => String(m.id) !== String(messageId)));
+    };
 
-      if (deletedFor === "me") {
-        setMessages((prev) => prev.filter((m) => String(m.id) !== String(messageId)));
-      } else {
-        setMessages((prev) =>
-          prev.map((m) =>
-            String(m.id) === String(messageId)
-              ? { ...m, text: "Bu mesaj silindi", deletedForAll: 1, replyToData: null }
-              : m
-          )
-        );
-      }
+    const onMessageDeletedAll = ({ messageId }) => {
+      if (!mounted) return;
+      setMessages((prev) =>
+        prev.map((m) =>
+          String(m.id) === String(messageId)
+            ? { ...m, text: "Bu mesaj silindi", deletedForAll: 1, replyTo: null }
+            : m
+        )
+      );
     };
 
     const onConnect = () => {
@@ -348,7 +350,8 @@ const ChatsPage = ({ user, onLogout }) => {
     socket.off("message:delivered");
     socket.off("message:seen");
     socket.off("message:edited");
-    socket.off("message:deleted");
+    socket.off("message:deleted-me");
+    socket.off("message:deleted-all");
     socket.off("connect");
     socket.off("connect_error");
 
@@ -360,7 +363,8 @@ const ChatsPage = ({ user, onLogout }) => {
     socket.on("message:delivered", onDelivered);
     socket.on("message:seen", onSeen);
     socket.on("message:edited", onMessageEdited);
-    socket.on("message:deleted", onMessageDeleted);
+    socket.on("message:deleted-me", onMessageDeletedMe);
+    socket.on("message:deleted-all", onMessageDeletedAll);
     socket.on("connect", onConnect);
     socket.on("connect_error", onConnectError);
 
@@ -378,7 +382,8 @@ const ChatsPage = ({ user, onLogout }) => {
       socket.off("message:delivered", onDelivered);
       socket.off("message:seen", onSeen);
       socket.off("message:edited", onMessageEdited);
-      socket.off("message:deleted", onMessageDeleted);
+      socket.off("message:deleted-me", onMessageDeletedMe);
+      socket.off("message:deleted-all", onMessageDeletedAll);
       socket.off("connect", onConnect);
       socket.off("connect_error", onConnectError);
 
@@ -440,14 +445,14 @@ const ChatsPage = ({ user, onLogout }) => {
   const handleDeleteForMe = useCallback(() => {
     if (!contextMenu?.message) return;
     const realId = resolveServerMessageId(contextMenu.message.id);
-    socket.emit("message:delete", { messageId: realId, deleteFor: "me" });
+    socket.emit("message:delete", { messageId: realId, deleteForAll: false });
     setContextMenu(null);
   }, [contextMenu, resolveServerMessageId]);
 
   const handleDeleteForEveryone = useCallback(() => {
     if (!contextMenu?.message) return;
     const realId = resolveServerMessageId(contextMenu.message.id);
-    socket.emit("message:delete", { messageId: realId, deleteFor: "everyone" });
+    socket.emit("message:delete", { messageId: realId, deleteForAll: true });
     setContextMenu(null);
   }, [contextMenu, resolveServerMessageId]);
 
@@ -477,8 +482,8 @@ const ChatsPage = ({ user, onLogout }) => {
       system: false,
       createdAt: nowIso,
       status: "sending",
-      replyTo: replyingTo?.id || null,
-      replyToData: replyingTo
+      replyToId: replyingTo?.id || null,
+      replyTo: replyingTo
         ? { id: replyingTo.id, username: replyingTo.username, text: truncate(replyingTo.text, 80) }
         : null,
       editedAt: null,
@@ -491,7 +496,7 @@ const ChatsPage = ({ user, onLogout }) => {
       room,
       text: clean,
       clientId: tmpId,
-      replyTo: replyingTo?.id || null,
+      replyToId: replyingTo?.id || null,
     });
 
     setText("");
@@ -597,10 +602,10 @@ const ChatsPage = ({ user, onLogout }) => {
                   ) : null}
 
                   <div className={`msg-bubble ${isDeleted ? "deleted" : ""}`}>
-                    {m.replyToData && !isDeleted ? (
+                    {m.replyTo && !isDeleted ? (
                       <div className="msg-reply-preview">
-                        <span className="msg-reply-username">{m.replyToData.username}</span>
-                        <span className="msg-reply-text">{truncate(m.replyToData.text, 50)}</span>
+                        <span className="msg-reply-username">{m.replyTo.username}</span>
+                        <span className="msg-reply-text">{truncate(m.replyTo.text, 50)}</span>
                       </div>
                     ) : null}
 

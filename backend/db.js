@@ -66,6 +66,35 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_deleted_messages_user ON deleted_messages(user_id);
 
+  -- ROOMS
+  CREATE TABLE IF NOT EXISTS rooms (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    creator_id TEXT,
+    created_at INTEGER NOT NULL,
+    deleted_at INTEGER,
+    FOREIGN KEY(creator_id) REFERENCES users(id) ON DELETE SET NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_rooms_name ON rooms(name);
+  CREATE INDEX IF NOT EXISTS idx_rooms_deleted ON rooms(deleted_at);
+
+  -- ROOM INVITES
+  CREATE TABLE IF NOT EXISTS room_invites (
+    id TEXT PRIMARY KEY,
+    room_id TEXT NOT NULL,
+    invite_token TEXT NOT NULL UNIQUE,
+    created_by TEXT,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER,
+    used_count INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY(room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+    FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_room_invites_token ON room_invites(invite_token);
+  CREATE INDEX IF NOT EXISTS idx_room_invites_room ON room_invites(room_id);
+
   -- OTP (persist; survives restart)
   CREATE TABLE IF NOT EXISTS otp_codes (
     email TEXT PRIMARY KEY,
@@ -359,6 +388,93 @@ function markReadForRoomExceptUser(room, username, readUpToTs) {
   return readAt;
 }
 
+/* ── Room helpers ── */
+
+const stmtCreateRoom = db.prepare(`
+  INSERT INTO rooms (id, name, creator_id, created_at)
+  VALUES (?, ?, ?, ?)
+`);
+
+const stmtFindRoomById = db.prepare(`
+  SELECT id, name, creator_id as creatorId, created_at as createdAt, deleted_at as deletedAt
+  FROM rooms WHERE id = ? AND deleted_at IS NULL
+`);
+
+const stmtFindRoomByName = db.prepare(`
+  SELECT id, name, creator_id as creatorId, created_at as createdAt, deleted_at as deletedAt
+  FROM rooms WHERE name = ? AND deleted_at IS NULL
+`);
+
+const stmtSoftDeleteRoom = db.prepare(`
+  UPDATE rooms SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL
+`);
+
+const stmtCleanupOldRooms = db.prepare(`
+  DELETE FROM rooms WHERE deleted_at IS NOT NULL AND deleted_at < ?
+`);
+
+function createRoom({ id, name, creatorId }) {
+  stmtCreateRoom.run(String(id), String(name), creatorId ? String(creatorId) : null, Date.now());
+}
+
+function findRoomById(id) {
+  return stmtFindRoomById.get(String(id));
+}
+
+function findRoomByName(name) {
+  return stmtFindRoomByName.get(String(name));
+}
+
+function softDeleteRoom(id) {
+  stmtSoftDeleteRoom.run(Date.now(), String(id));
+}
+
+function cleanupOldRooms(maxAgeMs) {
+  const cutoff = Date.now() - maxAgeMs;
+  stmtCleanupOldRooms.run(cutoff);
+}
+
+/* ── Room invite helpers ── */
+
+const stmtCreateInvite = db.prepare(`
+  INSERT INTO room_invites (id, room_id, invite_token, created_by, created_at, expires_at)
+  VALUES (?, ?, ?, ?, ?, ?)
+`);
+
+const stmtFindInviteByToken = db.prepare(`
+  SELECT id, room_id as roomId, invite_token as inviteToken, created_by as createdBy,
+         created_at as createdAt, expires_at as expiresAt, used_count as usedCount
+  FROM room_invites WHERE invite_token = ?
+`);
+
+const stmtIncrementInviteUsedCount = db.prepare(`
+  UPDATE room_invites SET used_count = used_count + 1 WHERE invite_token = ?
+`);
+
+const stmtCleanupExpiredInvites = db.prepare(`
+  DELETE FROM room_invites WHERE expires_at IS NOT NULL AND expires_at < ?
+`);
+
+function createInvite({ id, roomId, inviteToken, createdBy, expiresAt }) {
+  stmtCreateInvite.run(
+    String(id), String(roomId), String(inviteToken),
+    createdBy ? String(createdBy) : null, Date.now(),
+    expiresAt ? Number(expiresAt) : null
+  );
+}
+
+function findInviteByToken(token) {
+  return stmtFindInviteByToken.get(String(token));
+}
+
+function incrementInviteUsedCount(token) {
+  stmtIncrementInviteUsedCount.run(String(token));
+}
+
+function cleanupExpiredInvites() {
+  stmtCleanupExpiredInvites.run(Date.now());
+}
+
 module.exports = {
   db,
 
@@ -388,4 +504,15 @@ module.exports = {
   deleteMessageForUser,
   getDeletedMessageIdsForUser,
   markReadForRoomExceptUser,
+
+  createRoom,
+  findRoomById,
+  findRoomByName,
+  softDeleteRoom,
+  cleanupOldRooms,
+
+  createInvite,
+  findInviteByToken,
+  incrementInviteUsedCount,
+  cleanupExpiredInvites,
 };
