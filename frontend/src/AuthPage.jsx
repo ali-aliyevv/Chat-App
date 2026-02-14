@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
 import { api } from "./api";
+import { QRCodeCanvas } from "qrcode.react";
 import "./style/AuthPage.css";
 
 const OTP_TTL_SEC = 5 * 60;
@@ -12,7 +13,7 @@ const formatMMSS = (sec) => {
   return `${m}:${s}`;
 };
 
-const AuthPage = ({ onAuthed }) => {
+const AuthPage = ({ onAuthed, pendingRoom }) => {
   const [mode, setMode] = useState("login");
 
   const [identifier, setIdentifier] = useState("");
@@ -29,9 +30,14 @@ const AuthPage = ({ onAuthed }) => {
   const [resendLeft, setResendLeft] = useState(0);
 
   const [room, setRoom] = useState("general");
+
   const [err, setErr] = useState("");
   const [info, setInfo] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const [inviteRoom, setInviteRoom] = useState("");
+  const [inviteUrl, setInviteUrl] = useState("");
+  const [inviteErr, setInviteErr] = useState("");
 
   const isLogin = mode === "login";
 
@@ -40,6 +46,10 @@ const AuthPage = ({ onAuthed }) => {
     () => (isLogin ? "Email və ya Username ilə daxil ol" : "Email + Username (OTP ilə)"),
     [isLogin]
   );
+
+  useEffect(() => {
+    if (pendingRoom) setRoom(pendingRoom);
+  }, [pendingRoom]);
 
   const resetMsgs = () => {
     setErr("");
@@ -80,7 +90,6 @@ const AuthPage = ({ onAuthed }) => {
 
   const requestOtp = async (e) => {
     if (e?.preventDefault) e.preventDefault();
-
     if (loading) return;
 
     resetMsgs();
@@ -107,7 +116,6 @@ const AuthPage = ({ onAuthed }) => {
 
   const verifyOtp = async (e) => {
     e.preventDefault();
-
     if (loading) return;
 
     resetMsgs();
@@ -136,7 +144,6 @@ const AuthPage = ({ onAuthed }) => {
 
   const loginSubmit = async (e) => {
     e.preventDefault();
-
     if (loading) return;
 
     resetMsgs();
@@ -160,6 +167,26 @@ const AuthPage = ({ onAuthed }) => {
     if (resendLeft > 0 || loading) return;
     await requestOtp();
     setInfo("Kod yenidən göndərildi.");
+  };
+
+  const generateRoom = async () => {
+    if (loading) return;
+    setInviteErr("");
+    setInviteRoom("");
+    setInviteUrl("");
+
+    try {
+      const r = await api.post("/api/rooms/create");
+      const newRoom = String(r.data?.room || "").trim();
+      const url = String(r.data?.inviteUrl || "").trim();
+
+      setInviteRoom(newRoom);
+      setInviteUrl(url);
+
+      if (newRoom) setRoom(newRoom);
+    } catch (e2) {
+      setInviteErr(e2.response?.data?.message || e2.message || "Room create failed");
+    }
   };
 
   return (
@@ -230,6 +257,50 @@ const AuthPage = ({ onAuthed }) => {
             <button type="button" className="auth-secondary" onClick={goToRegister} disabled={loading}>
               Qeydiyyat
             </button>
+
+            <div style={{ marginTop: 14 }}>
+              <button
+                type="button"
+                className="auth-secondary"
+                onClick={generateRoom}
+                disabled={loading}
+                style={{ width: "100%" }}
+              >
+                Generate room
+              </button>
+
+              {inviteErr ? <div className="auth-msg auth-msg--err">{inviteErr}</div> : null}
+
+              {inviteUrl ? (
+                <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                  <div className="auth-msg auth-msg--info">
+                    Invite hazırdır. QR scan edən adam linkə girib login olacaq və avtomatik bu room-a düşəcək.
+                  </div>
+
+                  <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+                    <div style={{ background: "white", padding: 10, borderRadius: 12 }}>
+                      <QRCodeCanvas value={inviteUrl} size={120} />
+                    </div>
+
+                    <div style={{ display: "grid", gap: 8 }}>
+                      <div><b>Room:</b> {inviteRoom}</div>
+
+                      <a href={inviteUrl} target="_blank" rel="noreferrer">
+                        Open invite link
+                      </a>
+
+                      <button
+                        type="button"
+                        className="auth-secondary"
+                        onClick={() => navigator.clipboard?.writeText(inviteUrl)}
+                      >
+                        Copy link
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </form>
         )}
 
@@ -388,6 +459,7 @@ const AuthPage = ({ onAuthed }) => {
 
 AuthPage.propTypes = {
   onAuthed: PropTypes.func.isRequired,
+  pendingRoom: PropTypes.string,
 };
 
 export default AuthPage;

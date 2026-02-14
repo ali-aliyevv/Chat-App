@@ -1,21 +1,27 @@
-html, body, #root { height: 100%; }
+html, body, #root {
+  height: 100%;
+}
 
 body{
   margin: 0;
   background: #070913;
   color: #eaf2ff;
-  overflow: hidden;
+
+  overflow-x: hidden;
+  overflow-y: auto;
+
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
 }
 
-.app-shell{
+.app-shell {
   min-height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto;
   position: relative;
-  overflow: hidden;
 }
 
-.fx-bg{
-  position: absolute;
+.fx-bg {
+  position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 0;

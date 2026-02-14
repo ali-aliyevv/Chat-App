@@ -1,23 +1,37 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import AuthPage from "./AuthPage";
 import ChatsPage from "./ChatsPage";
 import { api } from "./api";
 import "./App.css";
 
-const ROOM_KEY = "rt_room";
-
 export default function App() {
-  const [user, setUser] = useState(null); 
+  const [user, setUser] = useState(null);
+  const [pendingRoom, setPendingRoom] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const checkSession = async () => {
-      try {
-        const r = await api.get("/api/me");
+  const resolveInviteIfAny = useCallback(async () => {
+    const params = new URLSearchParams(window.location.search);
+    const invite = params.get("invite");
+    if (!invite) return null;
 
-        if (r.data?.authenticated) {
-          const savedRoom = localStorage.getItem(ROOM_KEY) || "general";
-          setUser({ username: r.data.username, room: savedRoom });
+    try {
+      const r = await api.get("/api/invites/resolve", { params: { invite } });
+      const room = String(r.data?.room || "general").trim() || "general";
+      setPendingRoom(room);
+      return room;
+    } finally {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
+  useEffect(() => {
+    const boot = async () => {
+      try {
+        const inviteRoom = await resolveInviteIfAny();
+
+        const me = await api.get("/api/me");
+        if (me.data?.authenticated) {
+          setUser({ username: me.data.username, room: inviteRoom || "general" });
         } else {
           setUser(null);
         }
@@ -28,8 +42,19 @@ export default function App() {
       }
     };
 
-    checkSession();
-  }, []);
+    boot();
+  }, [resolveInviteIfAny]);
+
+  useEffect(() => {
+    const onPopState = async () => {
+      const room = await resolveInviteIfAny();
+      if (room && user?.username) {
+        setUser({ username: user.username, room });
+      }
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [resolveInviteIfAny, user]);
 
   const logout = async () => {
     try {
@@ -40,9 +65,9 @@ export default function App() {
   };
 
   const handleAuthed = (u) => {
-    const room = (u.room || "general").trim() || "general";
-    localStorage.setItem(ROOM_KEY, room);
+    const room = (u.room || pendingRoom || "general").trim() || "general";
     setUser({ username: u.username, room });
+    setPendingRoom(null); 
   };
 
   if (loading) return null;
@@ -60,7 +85,7 @@ export default function App() {
       {user ? (
         <ChatsPage user={user} onLogout={logout} />
       ) : (
-        <AuthPage onAuthed={handleAuthed} />
+        <AuthPage onAuthed={handleAuthed} pendingRoom={pendingRoom} />
       )}
     </div>
   );

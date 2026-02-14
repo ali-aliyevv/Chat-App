@@ -25,6 +25,13 @@ const {
 
   addMessage,
   getRecentMessages,
+  getMessageById,
+  getMessageByClientId,
+  updateMessageText,
+  softDeleteMessageForAll,
+  deleteMessageForUser,
+  getDeletedMessageIdsForUser,
+  markReadForRoomExceptUser,
 
   upsertOtp,
   getOtp,
@@ -39,6 +46,9 @@ const server = http.createServer(app);
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "http://localhost:5173";
 const ACCESS_SECRET = process.env.ACCESS_SECRET || "ACCESS_SECRET_CHANGE_ME";
 const REFRESH_SECRET = process.env.REFRESH_SECRET || "REFRESH_SECRET_CHANGE_ME";
+
+const INVITE_SECRET = process.env.INVITE_SECRET || "INVITE_SECRET_CHANGE_ME";
+const INVITE_EXPIRES_IN = "10m";
 
 const ACCESS_EXPIRES_IN = "15m";
 const REFRESH_EXPIRES_IN = "7d";
@@ -76,6 +86,10 @@ function signRefresh(user) {
   return jwt.sign({ sub: user.id }, REFRESH_SECRET, {
     expiresIn: REFRESH_EXPIRES_IN,
   });
+}
+
+function signInvite(room) {
+  return jwt.sign({ room }, INVITE_SECRET, { expiresIn: INVITE_EXPIRES_IN });
 }
 
 function cookieOptions() {
@@ -137,6 +151,32 @@ function makeOtpCode() {
 
 app.get("/health", (req, res) => res.json({ ok: true }));
 
+app.post("/api/rooms/create", (req, res) => {
+  const room = `room_${randomUUID().slice(0, 8)}`;
+  const token = signInvite(room);
+
+  const origin =
+    process.env.FRONTEND_ORIGIN ||
+    (req.headers.origin ? String(req.headers.origin) : "http://localhost:5173");
+
+  const inviteUrl = `${origin.replace(/\/$/, "")}/?invite=${encodeURIComponent(token)}`;
+
+  return res.json({ room, inviteUrl, expiresIn: INVITE_EXPIRES_IN });
+});
+
+app.get("/api/invites/resolve", (req, res) => {
+  const token = String(req.query.invite || "");
+  if (!token) return res.status(400).json({ message: "Missing invite token" });
+
+  try {
+    const payload = jwt.verify(token, INVITE_SECRET);
+    return res.json({ room: payload.room });
+  } catch {
+    return res.status(400).json({ message: "Invalid/expired invite token" });
+  }
+});
+
+
 app.post("/api/register/request-otp", async (req, res) => {
   const email = normalizeEmail(req.body?.email);
   const username = normalizeUsername(req.body?.username);
@@ -178,7 +218,6 @@ app.post("/api/register/request-otp", async (req, res) => {
   });
 });
 
-
 app.post("/api/register/verify-otp", async (req, res) => {
   const email = normalizeEmail(req.body?.email);
   const code = String(req.body?.code || "").trim();
@@ -187,16 +226,6 @@ app.post("/api/register/verify-otp", async (req, res) => {
   if (code.length !== 6) return res.status(400).json({ message: "OTP 6 rəqəm olmalıdır" });
 
   const entry = getOtp(email);
-
-  console.log("VERIFY DEBUG:", {
-    email,
-    entryUsername: entry?.username,
-    hasOtp: !!entry,
-    emailExists: !!findUserByEmail(email),
-    usernameExists: entry ? !!findUserByUsername(entry.username) : null,
-    time: new Date().toISOString(),
-  });
-
   if (!entry) return res.status(400).json({ message: "OTP tapılmadı, yenidən göndər" });
 
   if (Date.now() > entry.expiresAt) {
@@ -207,12 +236,8 @@ app.post("/api/register/verify-otp", async (req, res) => {
   const ok = await bcrypt.compare(code, entry.codeHash);
   if (!ok) return res.status(400).json({ message: "OTP yanlışdır" });
 
-  if (findUserByEmail(email)) {
-    return res.status(409).json({ message: "Bu email artıq var" });
-  }
-  if (findUserByUsername(entry.username)) {
-    return res.status(409).json({ message: "Bu username artıq var" });
-  }
+  if (findUserByEmail(email)) return res.status(409).json({ message: "Bu email artıq var" });
+  if (findUserByUsername(entry.username)) return res.status(409).json({ message: "Bu username artıq var" });
 
   const user = {
     id: randomUUID(),
@@ -242,7 +267,6 @@ app.post("/api/register/verify-otp", async (req, res) => {
   setAuthCookies(res, access, refresh);
   return res.json({ id: user.id, username: user.username, email: user.email });
 });
-
 
 app.post("/api/login", async (req, res) => {
   const identifier = String(req.body?.identifier ?? req.body?.username ?? "").trim();
@@ -277,7 +301,6 @@ app.post("/api/logout", (req, res) => {
 
 app.post("/api/logout-all", requireAuth, (req, res) => {
   revokeAllRefreshTokensForUser(req.user.sub);
-
   clearAuthCookies(res);
   return res.json({ ok: true });
 });
@@ -343,11 +366,9 @@ app.get("/api/me", optionalAuth, (req, res) => {
   });
 });
 
+
 const io = new Server(server, {
-  cors: {
-    origin: FRONTEND_ORIGIN,
-    credentials: true,
-  },
+  cors: { origin: FRONTEND_ORIGIN, credentials: true },
 });
 
 function parseCookies(cookieHeader) {
@@ -393,13 +414,33 @@ io.on("connection", (socket) => {
     if (!roomUsers.has(r)) roomUsers.set(r, new Set());
     roomUsers.get(r).add(u);
 
-    const history = getRecentMessages(r, 50);
-    socket.emit("room:history", history);
+    const rawHistory = getRecentMessages(r, 50);
+    const deletedForMe = getDeletedMessageIdsForUser(socket.user.id, r);
 
-    socket.emit("room:joined", {
-      room: r,
-      users: Array.from(roomUsers.get(r)),
-    });
+    const msgMap = new Map();
+    rawHistory.forEach((m) => msgMap.set(m.id, m));
+
+    const history = rawHistory
+      .filter((m) => !deletedForMe.has(m.id))
+      .map((m) => {
+        let replyToData = null;
+        if (m.replyTo) {
+          const replied = msgMap.get(m.replyTo) || getMessageById(m.replyTo);
+          if (replied && !replied.deletedForAll) {
+            replyToData = {
+              id: replied.id,
+              username: replied.username,
+              text: replied.text.length > 80 ? replied.text.slice(0, 80) + "..." : replied.text,
+            };
+          }
+        }
+
+        if (m.deletedForAll) return { ...m, text: "Bu mesaj silindi", replyToData: null };
+        return { ...m, replyToData };
+      });
+
+    socket.emit("room:history", history);
+    socket.emit("room:joined", { room: r, users: Array.from(roomUsers.get(r)) });
 
     const sysMsg = {
       id: randomUUID(),
@@ -413,14 +454,25 @@ io.on("connection", (socket) => {
 
     addMessage(sysMsg);
     io.to(r).emit("message:new", sysMsg);
-
     emitUsers(r);
   });
 
-  socket.on("message:send", ({ room, text, clientId }) => {
+  socket.on("message:send", ({ room, text, clientId, replyTo }) => {
     const r = String(room || socket.data.room || "general").trim() || "general";
     const t = String(text || "").trim();
     if (!t) return;
+
+    let replyToData = null;
+    if (replyTo) {
+      const repliedMsg = getMessageById(String(replyTo));
+      if (repliedMsg && !repliedMsg.deletedForAll) {
+        replyToData = {
+          id: repliedMsg.id,
+          username: repliedMsg.username,
+          text: repliedMsg.text.length > 80 ? repliedMsg.text.slice(0, 80) + "..." : repliedMsg.text,
+        };
+      }
+    }
 
     const msg = {
       id: randomUUID(),
@@ -430,23 +482,73 @@ io.on("connection", (socket) => {
       text: t,
       system: false,
       createdAt: Date.now(),
+      replyTo: replyTo ? String(replyTo) : null,
+      replyToData,
+      editedAt: null,
+      deletedForAll: 0,
+      readAt: null,
     };
 
     addMessage(msg);
     io.to(r).emit("message:new", msg);
-
     socket.emit("message:delivered", { clientId: msg.clientId, messageId: msg.id });
   });
 
   socket.on("message:read", ({ room, readUpTo }) => {
     const r = String(room || socket.data.room || "general").trim() || "general";
     if (!readUpTo) return;
-    socket.to(r).emit("message:seen", { readUpTo });
+
+    try {
+      const readAt = markReadForRoomExceptUser(r, socket.user.username, readUpTo);
+      socket.to(r).emit("message:seen", { readUpTo, readAt, reader: socket.user.username });
+    } catch (e) {
+      console.log("read_at update error:", e?.message || e);
+      socket.to(r).emit("message:seen", { readUpTo });
+    }
   });
 
   socket.on("typing", ({ room, isTyping }) => {
     const r = String(room || socket.data.room || "general").trim() || "general";
     socket.to(r).emit("typing", { username: socket.user.username, isTyping: !!isTyping });
+  });
+
+  socket.on("message:edit", ({ messageId, newText }) => {
+    if (!messageId || !newText) return;
+
+    let msg = getMessageById(String(messageId));
+    if (!msg) msg = getMessageByClientId(String(messageId));
+    if (!msg) return;
+
+    if (msg.username !== socket.user.username) return;
+    if (msg.system) return;
+    if (msg.deletedForAll) return;
+
+    const trimmed = String(newText).trim();
+    if (!trimmed) return;
+
+    updateMessageText(msg.id, trimmed);
+    const editedAt = Date.now();
+
+    io.to(msg.room).emit("message:edited", { messageId: msg.id, newText: trimmed, editedAt });
+  });
+
+  socket.on("message:delete", ({ messageId, deleteFor }) => {
+    if (!messageId) return;
+
+    let msg = getMessageById(String(messageId));
+    if (!msg) msg = getMessageByClientId(String(messageId));
+    if (!msg) return;
+
+    if (deleteFor === "everyone") {
+      if (msg.username !== socket.user.username) return;
+      if (msg.system) return;
+
+      softDeleteMessageForAll(msg.id);
+      io.to(msg.room).emit("message:deleted", { messageId: msg.id, deletedFor: "everyone" });
+    } else {
+      deleteMessageForUser(socket.user.id, msg.id);
+      socket.emit("message:deleted", { messageId: msg.id, deletedFor: "me" });
+    }
   });
 
   socket.on("disconnect", () => {
@@ -472,7 +574,6 @@ io.on("connection", (socket) => {
 
     addMessage(sysMsg);
     io.to(r).emit("message:new", sysMsg);
-
     emitUsers(r);
   });
 });

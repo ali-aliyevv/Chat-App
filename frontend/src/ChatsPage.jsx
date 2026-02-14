@@ -4,6 +4,7 @@ import { socket } from "./socket";
 import { api } from "./api";
 import "./style/ChatsPage.css";
 
+
 function formatTime(createdAt) {
   if (!createdAt) return "";
   const d = typeof createdAt === "number" ? new Date(createdAt) : new Date(createdAt);
@@ -61,6 +62,12 @@ function computeReadUpTo(messages, me) {
   return null;
 }
 
+function truncate(str, len = 50) {
+  if (!str) return "";
+  return str.length > len ? str.slice(0, len) + "..." : str;
+}
+
+
 const ChatsPage = ({ user, onLogout }) => {
   const room = (user.room || "general").trim() || "general";
   const me = user.username;
@@ -70,8 +77,15 @@ const ChatsPage = ({ user, onLogout }) => {
   const [typingUser, setTypingUser] = useState(null);
   const [text, setText] = useState("");
 
+  const [contextMenu, setContextMenu] = useState(null);
+
+  const [editingMessage, setEditingMessage] = useState(null); 
+
+  const [replyingTo, setReplyingTo] = useState(null);
+
   const messagesBoxRef = useRef(null);
   const shouldAutoScrollRef = useRef(true);
+  const inputRef = useRef(null);
 
   const refreshTriedRef = useRef(false);
   const didLogoutRef = useRef(false);
@@ -83,6 +97,18 @@ const ChatsPage = ({ user, onLogout }) => {
   useEffect(() => {
     messagesStateRef.current = messages;
   }, [messages]);
+
+  const resolveServerMessageId = useCallback((maybeId) => {
+    const id = String(maybeId || "");
+    if (!id) return null;
+
+    if (!id.startsWith("tmp_")) return id;
+
+    const found = messagesStateRef.current.find((m) => String(m.clientId) === id);
+    if (!found) return id;
+
+    return String(found.id || id);
+  }, []);
 
   const scrollToBottom = useCallback((behavior = "auto") => {
     const el = messagesBoxRef.current;
@@ -110,6 +136,16 @@ const ChatsPage = ({ user, onLogout }) => {
 
     if (shouldAutoScrollRef.current) emitReadUpTo();
   }, [emitReadUpTo]);
+
+  useEffect(() => {
+    const close = () => setContextMenu(null);
+    document.addEventListener("click", close);
+    document.addEventListener("scroll", close, true);
+    return () => {
+      document.removeEventListener("click", close);
+      document.removeEventListener("scroll", close, true);
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -222,7 +258,7 @@ const ChatsPage = ({ user, onLogout }) => {
 
         return prev.map((m) => {
           if (cid && String(m.id) === cid) {
-            return { ...m, id: mid || m.id, status: "delivered" };
+            return { ...m, id: mid || m.id, status: "delivered", clientId: cid };
           }
           if (!cid && mid && String(m.id) === mid) {
             return { ...m, status: "delivered" };
@@ -232,7 +268,7 @@ const ChatsPage = ({ user, onLogout }) => {
       });
     };
 
-    const onSeen = ({ readUpTo }) => {
+    const onSeen = ({ readUpTo, readAt }) => {
       if (!mounted) return;
       if (!readUpTo) return;
 
@@ -244,10 +280,39 @@ const ChatsPage = ({ user, onLogout }) => {
           const mt = typeof m.createdAt === "number" ? m.createdAt : Date.parse(m.createdAt || 0);
           const rt = typeof readUpTo === "number" ? readUpTo : Date.parse(readUpTo || 0);
 
-          if ((mt || 0) <= (rt || 0)) return { ...m, status: "seen" };
+          if ((mt || 0) <= (rt || 0)) {
+            return { ...m, status: "seen", readAt: readAt || Date.now() };
+          }
           return m;
         })
       );
+    };
+
+    const onMessageEdited = ({ messageId, newText, editedAt }) => {
+      if (!mounted) return;
+      setMessages((prev) =>
+        prev.map((m) =>
+          String(m.id) === String(messageId)
+            ? { ...m, text: newText, editedAt }
+            : m
+        )
+      );
+    };
+
+    const onMessageDeleted = ({ messageId, deletedFor }) => {
+      if (!mounted) return;
+
+      if (deletedFor === "me") {
+        setMessages((prev) => prev.filter((m) => String(m.id) !== String(messageId)));
+      } else {
+        setMessages((prev) =>
+          prev.map((m) =>
+            String(m.id) === String(messageId)
+              ? { ...m, text: "Bu mesaj silindi", deletedForAll: 1, replyToData: null }
+              : m
+          )
+        );
+      }
     };
 
     const onConnect = () => {
@@ -282,6 +347,8 @@ const ChatsPage = ({ user, onLogout }) => {
     socket.off("typing");
     socket.off("message:delivered");
     socket.off("message:seen");
+    socket.off("message:edited");
+    socket.off("message:deleted");
     socket.off("connect");
     socket.off("connect_error");
 
@@ -292,6 +359,8 @@ const ChatsPage = ({ user, onLogout }) => {
     socket.on("typing", onTyping);
     socket.on("message:delivered", onDelivered);
     socket.on("message:seen", onSeen);
+    socket.on("message:edited", onMessageEdited);
+    socket.on("message:deleted", onMessageDeleted);
     socket.on("connect", onConnect);
     socket.on("connect_error", onConnectError);
 
@@ -308,6 +377,8 @@ const ChatsPage = ({ user, onLogout }) => {
       socket.off("typing", onTyping);
       socket.off("message:delivered", onDelivered);
       socket.off("message:seen", onSeen);
+      socket.off("message:edited", onMessageEdited);
+      socket.off("message:deleted", onMessageDeleted);
       socket.off("connect", onConnect);
       socket.off("connect_error", onConnectError);
 
@@ -325,9 +396,72 @@ const ChatsPage = ({ user, onLogout }) => {
     }
   }, [messages.length, scrollToBottom]);
 
+  const handleContextMenu = useCallback(
+    (e, msg) => {
+      if (msg.system) return;
+      if (msg.deletedForAll) return;
+
+      if (String(msg.id || "").startsWith("tmp_")) return;
+      if (msg.status === "sending") return;
+
+      e.preventDefault();
+      setContextMenu({ x: e.clientX, y: e.clientY, message: msg });
+    },
+    []
+  );
+
+  const handleReply = useCallback(() => {
+    if (!contextMenu?.message) return;
+    const m = contextMenu.message;
+    setReplyingTo({ id: m.id, username: m.username, text: m.text });
+    setContextMenu(null);
+    inputRef.current?.focus();
+  }, [contextMenu]);
+
+  const handleStartEdit = useCallback(() => {
+    if (!contextMenu?.message) return;
+    const m = contextMenu.message;
+    setEditingMessage({ id: m.id, text: m.text });
+    setText(m.text);
+    setReplyingTo(null);
+    setContextMenu(null);
+    inputRef.current?.focus();
+  }, [contextMenu]);
+
+  const cancelEdit = useCallback(() => {
+    setEditingMessage(null);
+    setText("");
+  }, []);
+
+  const cancelReply = useCallback(() => {
+    setReplyingTo(null);
+  }, []);
+
+  const handleDeleteForMe = useCallback(() => {
+    if (!contextMenu?.message) return;
+    const realId = resolveServerMessageId(contextMenu.message.id);
+    socket.emit("message:delete", { messageId: realId, deleteFor: "me" });
+    setContextMenu(null);
+  }, [contextMenu, resolveServerMessageId]);
+
+  const handleDeleteForEveryone = useCallback(() => {
+    if (!contextMenu?.message) return;
+    const realId = resolveServerMessageId(contextMenu.message.id);
+    socket.emit("message:delete", { messageId: realId, deleteFor: "everyone" });
+    setContextMenu(null);
+  }, [contextMenu, resolveServerMessageId]);
+
   const send = () => {
     const clean = text.trim();
     if (!clean) return;
+
+    if (editingMessage) {
+      const realId = resolveServerMessageId(editingMessage.id);
+      socket.emit("message:edit", { messageId: realId, newText: clean });
+      setEditingMessage(null);
+      setText("");
+      return;
+    }
 
     shouldAutoScrollRef.current = true;
 
@@ -337,18 +471,31 @@ const ChatsPage = ({ user, onLogout }) => {
     const optimistic = {
       id: tmpId,
       room,
+      clientId: tmpId,
       username: me,
       text: clean,
       system: false,
       createdAt: nowIso,
       status: "sending",
+      replyTo: replyingTo?.id || null,
+      replyToData: replyingTo
+        ? { id: replyingTo.id, username: replyingTo.username, text: truncate(replyingTo.text, 80) }
+        : null,
+      editedAt: null,
+      deletedForAll: 0,
     };
 
     setMessages((prev) => mergeMessages(prev, [optimistic]));
 
-    socket.emit("message:send", { room, text: clean, clientId: tmpId });
+    socket.emit("message:send", {
+      room,
+      text: clean,
+      clientId: tmpId,
+      replyTo: replyingTo?.id || null,
+    });
 
     setText("");
+    setReplyingTo(null);
     socket.emit("typing", { room, isTyping: false });
 
     requestAnimationFrame(() => scrollToBottom("smooth"));
@@ -375,9 +522,15 @@ const ChatsPage = ({ user, onLogout }) => {
     if (m.username !== me) return null;
 
     const s = m.status || "delivered";
-    if (s === "sending") return <span className="msg-status">Sending…</span>;
-    if (s === "delivered") return <span className="msg-status">✓</span>;
-    if (s === "seen") return <span className="msg-status">✓✓ Seen</span>;
+    if (s === "sending") return <span className="msg-status sending">Sending...</span>;
+    if (s === "delivered") return <span className="msg-status delivered">&#10003;</span>;
+    if (s === "seen") {
+      return (
+        <span className="msg-status seen" title={m.readAt ? `Oxundu: ${formatTime(m.readAt)}` : "Oxundu"}>
+          &#10003;&#10003;
+        </span>
+      );
+    }
     return null;
   };
 
@@ -386,10 +539,10 @@ const ChatsPage = ({ user, onLogout }) => {
       <div className="chat-card">
         <div className="chat-top">
           <div>
-            <div className="chat-title">Room: #{room}</div>
+            <div className="chat-title">{"Room: #" + room}</div>
             <div className="chat-subtitle">
-              Logged in as <b>{me}</b>
-              {typingUser ? <span className="typing"> · {typingUser} is typing…</span> : null}
+              {"Logged in as "}<b>{me}</b>
+              {typingUser ? <span className="typing">{" · " + typingUser + " is typing..."}</span> : null}
             </div>
           </div>
 
@@ -424,9 +577,14 @@ const ChatsPage = ({ user, onLogout }) => {
               const m = it.msg;
               const time = formatTime(m.createdAt);
               const isMine = !m.system && m.username === me;
+              const isDeleted = !!m.deletedForAll;
 
               return (
-                <div key={it.key} className={`msg ${m.system ? "system" : isMine ? "mine" : "theirs"}`}>
+                <div
+                  key={it.key}
+                  className={`msg ${m.system ? "system" : isMine ? "mine" : "theirs"}`}
+                  onContextMenu={(e) => handleContextMenu(e, m)}
+                >
                   {!m.system ? (
                     <div className="msg-user">
                       <span>{m.username}</span>
@@ -438,9 +596,32 @@ const ChatsPage = ({ user, onLogout }) => {
                     </div>
                   ) : null}
 
-                  <div className="msg-bubble">
-                    {m.text}
-                    {isMine ? <div className="msg-statusWrap">{renderStatus(m)}</div> : null}
+                  <div className={`msg-bubble ${isDeleted ? "deleted" : ""}`}>
+                    {m.replyToData && !isDeleted ? (
+                      <div className="msg-reply-preview">
+                        <span className="msg-reply-username">{m.replyToData.username}</span>
+                        <span className="msg-reply-text">{truncate(m.replyToData.text, 50)}</span>
+                      </div>
+                    ) : null}
+
+                    {isDeleted ? (
+                      <span className="msg-deleted-text">Bu mesaj silindi</span>
+                    ) : (
+                      <span>{m.text}</span>
+                    )}
+
+                    {m.editedAt && !isDeleted ? (
+                      <span className="msg-edited">(edited)</span>
+                    ) : null}
+
+                    {isMine && !isDeleted ? (
+                      <div className="msg-statusWrap">
+                        {renderStatus(m)}
+                        {m.status === "seen" && m.readAt ? (
+                          <span className="msg-read-time">{formatTime(m.readAt)}</span>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               );
@@ -448,27 +629,87 @@ const ChatsPage = ({ user, onLogout }) => {
           </section>
         </div>
 
+        {replyingTo ? (
+          <div className="reply-banner">
+            <div className="reply-banner-bar" />
+            <div className="reply-banner-content">
+              <span className="reply-banner-username">{replyingTo.username}</span>
+              <span className="reply-banner-text">{truncate(replyingTo.text, 60)}</span>
+            </div>
+            <button className="reply-banner-close" onClick={cancelReply}>&#10005;</button>
+          </div>
+        ) : null}
+
+        {editingMessage ? (
+          <div className="edit-banner">
+            <div className="edit-banner-bar" />
+            <div className="edit-banner-content">
+              <span className="edit-banner-label">Mesaji redakte et</span>
+            </div>
+            <button className="edit-banner-close" onClick={cancelEdit}>&#10005;</button>
+          </div>
+        ) : null}
+
         <div className="chat-inputRow">
           <input
+            ref={inputRef}
             className="chat-input"
             value={text}
             onChange={(e) => {
               const v = e.target.value;
               setText(v);
-              socket.emit("typing", { room, isTyping: v.trim().length > 0 });
+              if (!editingMessage) {
+                socket.emit("typing", { room, isTyping: v.trim().length > 0 });
+              }
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter") send();
+              if (e.key === "Escape") {
+                if (editingMessage) cancelEdit();
+                if (replyingTo) cancelReply();
+              }
             }}
-            placeholder="Write a message…"
+            placeholder={editingMessage ? "Yeni mesaj metn..." : "Write a message..."}
             autoComplete="off"
           />
 
           <button className="chat-send" onClick={send}>
-            Send
+            {editingMessage ? "Save" : "Send"}
           </button>
         </div>
       </div>
+
+      {contextMenu ? (
+        <div
+          className="context-menu"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button className="context-menu-item" onClick={handleReply}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+            Reply
+          </button>
+
+          {contextMenu.message.username === me ? (
+            <button className="context-menu-item" onClick={handleStartEdit}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              Edit
+            </button>
+          ) : null}
+
+          <button className="context-menu-item" onClick={handleDeleteForMe}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            Menim ucun sil
+          </button>
+
+          {contextMenu.message.username === me ? (
+            <button className="context-menu-item delete" onClick={handleDeleteForEveryone}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+              Hami ucun sil
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 };
