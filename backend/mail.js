@@ -1,38 +1,121 @@
 require("dotenv").config();
 const nodemailer = require("nodemailer");
 
+// ========================
+// SMTP CONFIG
+// ========================
+
+const SMTP_HOST = process.env.SMTP_HOST;
+const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
+const SMTP_USER = process.env.SMTP_USER;
+const SMTP_PASS = process.env.SMTP_PASS;
+const SMTP_FROM = process.env.SMTP_FROM;
+
+// port-a görə secure avtomatik seçilir
+const isSecure = SMTP_PORT === 465;
+
+// transporter yarat
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT || 465),
-  secure: String(process.env.SMTP_SECURE) === "true",
+  host: SMTP_HOST,
+  port: SMTP_PORT,
+  secure: isSecure,
+
   auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
+    user: SMTP_USER,
+    pass: SMTP_PASS,
   },
+
+  // STARTTLS üçün lazımdır (port 587)
+  requireTLS: !isSecure,
+
+  // timeout-lar (Render üçün çox vacibdir)
+  connectionTimeout: 10000,
+  greetingTimeout: 10000,
+  socketTimeout: 10000,
 });
 
-transporter
-  .verify()
-  .then(() => console.log("✅ SMTP ready"))
-  .catch((e) => console.log("❌ SMTP error:", e?.message || e));
+// ========================
+// SMTP VERIFY (server start zamanı)
+// ========================
 
-async function sendOtpEmail(toEmail, otp) {
-  const info = await transporter.sendMail({
-    from: process.env.SMTP_FROM,
-    to: toEmail,
-    subject: "OTP Code — RealChat",
-    text: `Your OTP code is: ${otp}. This code expires in 5 minutes.`,
-    html: `
-      <div style="font-family:Arial,sans-serif">
-        <h2>RealChat OTP Code</h2>
-        <p>Your verification code:</p>
-        <h1 style="letter-spacing:6px">${otp}</h1>
-        <p>This code expires in 5 minutes.</p>
-      </div>
-    `,
-  });
-
-  console.log("✅ OTP email göndərildi:", toEmail, "messageId:", info.messageId);
+async function verifySMTP() {
+  try {
+    await transporter.verify();
+    console.log("✅ SMTP ready");
+    console.log("Host:", SMTP_HOST);
+    console.log("Port:", SMTP_PORT);
+    console.log("Secure:", isSecure);
+  } catch (error) {
+    console.error("❌ SMTP verify error:", error.message);
+  }
 }
 
-module.exports = { sendOtpEmail };
+// dərhal yoxla
+verifySMTP();
+
+// ========================
+// SEND OTP EMAIL
+// ========================
+
+async function sendOtpEmail(toEmail, otp) {
+  try {
+    const info = await transporter.sendMail({
+      from: SMTP_FROM,
+      to: toEmail,
+      subject: "OTP Code — RealChat",
+
+      text: `Your OTP code is: ${otp}. This code expires in 5 minutes.`,
+
+      html: `
+        <div style="
+          font-family: Arial, sans-serif;
+          max-width: 500px;
+          margin: auto;
+          padding: 20px;
+          border: 1px solid #eee;
+          border-radius: 10px;
+        ">
+          <h2 style="color:#333;">RealChat Verification</h2>
+
+          <p>Your OTP code:</p>
+
+          <div style="
+            font-size: 32px;
+            font-weight: bold;
+            letter-spacing: 8px;
+            background: #f4f4f4;
+            padding: 10px;
+            text-align: center;
+            border-radius: 6px;
+          ">
+            ${otp}
+          </div>
+
+          <p style="margin-top:15px;">
+            This code expires in <b>5 minutes</b>.
+          </p>
+
+          <p style="color:#777;font-size:12px;">
+            If you didn't request this, ignore this email.
+          </p>
+        </div>
+      `,
+    });
+
+    console.log("✅ OTP email göndərildi:", toEmail);
+    console.log("Message ID:", info.messageId);
+
+    return true;
+  } catch (error) {
+    console.error("❌ OTP email göndərilmədi:", error.message);
+    throw error;
+  }
+}
+
+// ========================
+// EXPORT
+// ========================
+
+module.exports = {
+  sendOtpEmail,
+};
