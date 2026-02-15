@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
 import { api } from "./api";
 import { QRCodeCanvas } from "qrcode.react";
+import { useLanguage } from "./context/LanguageContext";
+import SettingsBar from "./components/SettingsBar";
 import "./style/AuthPage.css";
 
 const OTP_TTL_SEC = 5 * 60;
@@ -14,6 +16,8 @@ const formatMMSS = (sec) => {
 };
 
 const AuthPage = ({ onAuthed, pendingRoom }) => {
+  const { t } = useLanguage();
+
   const [mode, setMode] = useState("login");
 
   const [identifier, setIdentifier] = useState("");
@@ -41,10 +45,10 @@ const AuthPage = ({ onAuthed, pendingRoom }) => {
 
   const isLogin = mode === "login";
 
-  const title = useMemo(() => (isLogin ? "Login" : "Register"), [isLogin]);
+  const title = useMemo(() => (isLogin ? t("login") : t("register")), [isLogin, t]);
   const subtitle = useMemo(
-    () => (isLogin ? "Email və ya Username ilə daxil ol" : "Email + Username (OTP ilə)"),
-    [isLogin]
+    () => (isLogin ? t("loginSubtitle") : t("registerSubtitle")),
+    [isLogin, t]
   );
 
   useEffect(() => {
@@ -80,12 +84,12 @@ const AuthPage = ({ onAuthed, pendingRoom }) => {
     setOtpLeft(OTP_TTL_SEC);
     setResendLeft(RESEND_COOLDOWN_SEC);
 
-    const t = setInterval(() => {
+    const timer = setInterval(() => {
       setOtpLeft((v) => (v > 0 ? v - 1 : 0));
       setResendLeft((v) => (v > 0 ? v - 1 : 0));
     }, 1000);
 
-    return () => clearInterval(t);
+    return () => clearInterval(timer);
   }, [otpStep]);
 
   const requestOtp = async (e) => {
@@ -122,7 +126,7 @@ const AuthPage = ({ onAuthed, pendingRoom }) => {
 
     const clean = otpCode.replace(/\D/g, "").slice(0, 6);
     if (clean.length !== 6) {
-      setErr("OTP kod 6 rəqəm olmalıdır");
+      setErr(t("otpMustBe6"));
       return;
     }
 
@@ -166,7 +170,7 @@ const AuthPage = ({ onAuthed, pendingRoom }) => {
   const resendOtp = async () => {
     if (resendLeft > 0 || loading) return;
     await requestOtp();
-    setInfo("Kod yenidən göndərildi.");
+    setInfo(t("codeSent"));
   };
 
   const generateRoom = async () => {
@@ -192,32 +196,37 @@ const AuthPage = ({ onAuthed, pendingRoom }) => {
   return (
     <div className="auth-shell">
       <div className="auth-card">
-        <div className="auth-badge">REAL-TIME CHAT</div>
+        <div className="auth-card-header">
+          <div className="auth-card-header-left">
+            <div className="auth-badge">REAL-TIME CHAT</div>
+          </div>
+          <SettingsBar compact />
+        </div>
 
         <h1 className="auth-title">
-          {title} <span className="wave">👋</span>
+          {title} <span className="wave">{'👋'}</span>
         </h1>
         <p className="auth-subtitle">{subtitle}</p>
 
         {isLogin && (
           <form onSubmit={loginSubmit} className="auth-form">
-            <label className="auth-label">Email or Username</label>
+            <label className="auth-label">{t("emailOrUsername")}</label>
             <div className="auth-inputWrap">
-              <span className="auth-icon">👤</span>
+              <span className="auth-icon">{'👤'}</span>
               <input
                 className="auth-input"
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
-                placeholder="ali123 və ya ali@gmail.com"
+                placeholder="ali123 / ali@gmail.com"
                 autoComplete="username"
               />
             </div>
 
             <label className="auth-label" style={{ marginTop: 12 }}>
-              Password
+              {t("password")}
             </label>
             <div className="auth-inputWrap">
-              <span className="auth-icon">🔒</span>
+              <span className="auth-icon">{'🔒'}</span>
               <input
                 className="auth-input"
                 type="password"
@@ -229,7 +238,7 @@ const AuthPage = ({ onAuthed, pendingRoom }) => {
             </div>
 
             <label className="auth-label" style={{ marginTop: 12 }}>
-              Room
+              {t("room")}
             </label>
             <div className="auth-inputWrap">
               <span className="auth-icon">#</span>
@@ -246,16 +255,16 @@ const AuthPage = ({ onAuthed, pendingRoom }) => {
             {info ? <div className="auth-msg auth-msg--info">{info}</div> : null}
 
             <button className="auth-primary" type="submit" disabled={loading}>
-              {loading ? "Loading..." : "Enter"}
+              {loading ? t("loading") : t("enter")}
               <span className="btn-glow" />
             </button>
 
             <div className="auth-divider">
-              <span /> or <span />
+              <span /> {t("or")} <span />
             </div>
 
             <button type="button" className="auth-secondary" onClick={goToRegister} disabled={loading}>
-              Qeydiyyat
+              {t("register")}
             </button>
 
             <div style={{ marginTop: 14 }}>
@@ -266,7 +275,7 @@ const AuthPage = ({ onAuthed, pendingRoom }) => {
                 disabled={loading}
                 style={{ width: "100%" }}
               >
-                Generate room
+                {t("generateRoom")}
               </button>
 
               {inviteErr ? <div className="auth-msg auth-msg--err">{inviteErr}</div> : null}
@@ -274,7 +283,7 @@ const AuthPage = ({ onAuthed, pendingRoom }) => {
               {inviteUrl ? (
                 <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
                   <div className="auth-msg auth-msg--info">
-                    Invite hazırdır. QR scan edən adam linkə girib login olacaq və avtomatik bu room-a düşəcək.
+                    {t("inviteReady")}
                   </div>
 
                   <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
@@ -283,10 +292,10 @@ const AuthPage = ({ onAuthed, pendingRoom }) => {
                     </div>
 
                     <div style={{ display: "grid", gap: 8 }}>
-                      <div><b>Room:</b> {inviteRoom}</div>
+                      <div><b>{t("room")}:</b> {inviteRoom}</div>
 
                       <a href={inviteUrl} target="_blank" rel="noreferrer">
-                        Open invite link
+                        {t("openInviteLink")}
                       </a>
 
                       <button
@@ -294,7 +303,7 @@ const AuthPage = ({ onAuthed, pendingRoom }) => {
                         className="auth-secondary"
                         onClick={() => navigator.clipboard?.writeText(inviteUrl)}
                       >
-                        Copy link
+                        {t("copyLink")}
                       </button>
                     </div>
                   </div>
@@ -306,9 +315,9 @@ const AuthPage = ({ onAuthed, pendingRoom }) => {
 
         {!isLogin && !otpStep && (
           <form onSubmit={requestOtp} className="auth-form">
-            <label className="auth-label">Email</label>
+            <label className="auth-label">{t("email")}</label>
             <div className="auth-inputWrap">
-              <span className="auth-icon">📧</span>
+              <span className="auth-icon">{'📧'}</span>
               <input
                 className="auth-input"
                 value={email}
@@ -320,10 +329,10 @@ const AuthPage = ({ onAuthed, pendingRoom }) => {
             </div>
 
             <label className="auth-label" style={{ marginTop: 12 }}>
-              Username
+              {t("username")}
             </label>
             <div className="auth-inputWrap">
-              <span className="auth-icon">👤</span>
+              <span className="auth-icon">{'👤'}</span>
               <input
                 className="auth-input"
                 value={regUsername}
@@ -334,10 +343,10 @@ const AuthPage = ({ onAuthed, pendingRoom }) => {
             </div>
 
             <label className="auth-label" style={{ marginTop: 12 }}>
-              Password
+              {t("password")}
             </label>
             <div className="auth-inputWrap">
-              <span className="auth-icon">🔒</span>
+              <span className="auth-icon">{'🔒'}</span>
               <input
                 className="auth-input"
                 type="password"
@@ -349,7 +358,7 @@ const AuthPage = ({ onAuthed, pendingRoom }) => {
             </div>
 
             <label className="auth-label" style={{ marginTop: 12 }}>
-              Room
+              {t("room")}
             </label>
             <div className="auth-inputWrap">
               <span className="auth-icon">#</span>
@@ -366,16 +375,16 @@ const AuthPage = ({ onAuthed, pendingRoom }) => {
             {info ? <div className="auth-msg auth-msg--info">{info}</div> : null}
 
             <button className="auth-primary" type="submit" disabled={loading}>
-              {loading ? "Sending..." : "Kod göndər"}
+              {loading ? t("sending") : t("sendCode")}
               <span className="btn-glow" />
             </button>
 
             <div className="auth-divider">
-              <span /> or <span />
+              <span /> {t("or")} <span />
             </div>
 
             <button type="button" className="auth-secondary" onClick={goToLogin} disabled={loading}>
-              Back to Login
+              {t("backToLogin")}
             </button>
           </form>
         )}
@@ -384,16 +393,16 @@ const AuthPage = ({ onAuthed, pendingRoom }) => {
           <form onSubmit={verifyOtp} className="auth-form">
             <div className="auth-hint" style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
               <div>
-                <b>{email}</b> üçün 6 rəqəm OTP kodunu daxil et
+                {t("otpHint")} <b>{email}</b>
               </div>
               <div style={{ opacity: 0.9 }}>
-                ⏳ <b>{formatMMSS(otpLeft)}</b>
+                {'⏳'} <b>{formatMMSS(otpLeft)}</b>
               </div>
             </div>
 
-            <label className="auth-label">OTP Code</label>
+            <label className="auth-label">{t("otpCode")}</label>
             <div className="auth-inputWrap">
-              <span className="auth-icon">🔢</span>
+              <span className="auth-icon">{'🔢'}</span>
               <input
                 className="auth-input"
                 value={otpCode}
@@ -409,14 +418,14 @@ const AuthPage = ({ onAuthed, pendingRoom }) => {
             </div>
 
             {otpLeft === 0 ? (
-              <div className="auth-msg auth-msg--err">OTP vaxtı bitdi. Yenidən kod göndər.</div>
+              <div className="auth-msg auth-msg--err">{t("otpExpired")}</div>
             ) : null}
 
             {err ? <div className="auth-msg auth-msg--err">{err}</div> : null}
             {info ? <div className="auth-msg auth-msg--info">{info}</div> : null}
 
             <button className="auth-primary" type="submit" disabled={loading || otpLeft === 0}>
-              {loading ? "Verifying..." : "Təsdiqlə"}
+              {loading ? t("verifying") : t("verify")}
               <span className="btn-glow" />
             </button>
 
@@ -433,7 +442,7 @@ const AuthPage = ({ onAuthed, pendingRoom }) => {
               }}
               disabled={loading}
             >
-              Geri (məlumatları düzəlt)
+              {t("goBack")}
             </button>
 
             <button
@@ -442,13 +451,13 @@ const AuthPage = ({ onAuthed, pendingRoom }) => {
               style={{ marginTop: 10 }}
               onClick={resendOtp}
               disabled={loading || resendLeft > 0}
-              title={resendLeft > 0 ? `Gözlə: ${resendLeft}s` : "Yenidən kod göndər"}
+              title={resendLeft > 0 ? `${t("resendCode")} (${resendLeft}s)` : t("resendCode")}
             >
-              {resendLeft > 0 ? `Yenidən kod göndər (${resendLeft}s)` : "Yenidən kod göndər"}
+              {resendLeft > 0 ? `${t("resendCode")} (${resendLeft}s)` : t("resendCode")}
             </button>
 
             <button type="button" className="auth-secondary" style={{ marginTop: 10 }} onClick={goToLogin} disabled={loading}>
-              Login-ə qayıt
+              {t("backToLogin")}
             </button>
           </form>
         )}

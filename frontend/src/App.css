@@ -2,14 +2,50 @@ html, body, #root {
   height: 100%;
 }
 
+:root,
+[data-theme="dark"] {
+  --app-bg: #070913;
+  --app-text: #eaf2ff;
+  --blob-a-1: #ffb000;
+  --blob-a-2: #ff3d00;
+  --blob-a-3: #ff00aa;
+  --blob-b-1: #00d4ff;
+  --blob-b-2: #7c3aed;
+  --blob-b-3: #ff3d00;
+  --blob-c-1: #ff3d00;
+  --blob-c-2: #ffb000;
+  --blob-c-3: #00d4ff;
+  --blob-opacity: 0.55;
+  --grid-line: rgba(255,255,255,0.05);
+  --grid-opacity: 0.18;
+  --noise-opacity: 0.10;
+}
+
+[data-theme="light"] {
+  --app-bg: #f0f2f7;
+  --app-text: #1a1f2e;
+  --blob-a-1: #ffcf66;
+  --blob-a-2: #ff8a65;
+  --blob-a-3: #ff80cb;
+  --blob-b-1: #64e0ff;
+  --blob-b-2: #a78bfa;
+  --blob-b-3: #ff8a65;
+  --blob-c-1: #ff8a65;
+  --blob-c-2: #ffcf66;
+  --blob-c-3: #64e0ff;
+  --blob-opacity: 0.25;
+  --grid-line: rgba(0,0,0,0.04);
+  --grid-opacity: 0.12;
+  --noise-opacity: 0.04;
+}
+
 body{
   margin: 0;
-  background: #070913;
-  color: #eaf2ff;
-
+  background: var(--app-bg);
+  color: var(--app-text);
+  transition: background 0.3s ease, color 0.3s ease;
   overflow-x: hidden;
   overflow-y: auto;
-
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
 }
 
@@ -30,6 +66,83 @@ body{
 .app-shell > *:not(.fx-bg){
   position: relative;
   z-index: 1;
+}
+
+.fx-blob{
+  position:absolute;
+  width: 520px;
+  height: 520px;
+  filter: blur(30px);
+  opacity: var(--blob-opacity);
+  border-radius: 999px;
+  mix-blend-mode: screen;
+  will-change: transform;
+  contain: layout style paint;
+  animation: floaty 6.5s ease-in-out infinite;
+  transition: opacity 0.3s ease;
+}
+
+.fx-blob--a{
+  left: -120px;
+  top: -140px;
+  background: radial-gradient(circle at 30% 30%, var(--blob-a-1), transparent 55%),
+              radial-gradient(circle at 70% 60%, var(--blob-a-2), transparent 55%),
+              radial-gradient(circle at 50% 70%, var(--blob-a-3), transparent 60%);
+}
+
+.fx-blob--b{
+  right: -160px;
+  top: 40px;
+  background: radial-gradient(circle at 30% 30%, var(--blob-b-1), transparent 55%),
+              radial-gradient(circle at 70% 60%, var(--blob-b-2), transparent 55%),
+              radial-gradient(circle at 50% 70%, var(--blob-b-3), transparent 62%);
+  animation-delay: -1.5s;
+}
+
+.fx-blob--c{
+  left: 20%;
+  bottom: -220px;
+  width: 620px;
+  height: 620px;
+  background: radial-gradient(circle at 30% 30%, var(--blob-c-1), transparent 55%),
+              radial-gradient(circle at 70% 60%, var(--blob-c-2), transparent 55%),
+              radial-gradient(circle at 50% 70%, var(--blob-c-3), transparent 62%);
+  animation-delay: -3s;
+}
+
+@keyframes floaty{
+  0%   { transform: translate3d(0,0,0) scale(1); }
+  50%  { transform: translate3d(50px, -36px, 0) scale(1.08); }
+  100% { transform: translate3d(0,0,0) scale(1); }
+}
+
+.fx-grid{
+  position:absolute; inset:0;
+  background:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 42px 42px;
+  mask-image: radial-gradient(circle at 50% 40%, rgba(0,0,0,1), rgba(0,0,0,0));
+  opacity: var(--grid-opacity);
+  will-change: transform;
+  animation: gridMove 9s linear infinite;
+}
+
+@keyframes gridMove{
+  from { transform: translateY(0); }
+  to   { transform: translateY(42px); }
+}
+
+.fx-noise{
+  position:absolute; inset:0;
+  opacity: var(--noise-opacity);
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+}
+
+[data-theme="light"] .fx-blob {
+  mix-blend-mode: normal;
 }
 
 @media (max-width: 768px) {
