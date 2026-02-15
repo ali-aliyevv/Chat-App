@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { socket } from "./socket";
 import { api } from "./api";
+import { useLanguage } from "./context/LanguageContext";
+import SettingsBar from "./components/SettingsBar";
 import "./style/ChatsPage.css";
 
 
@@ -19,22 +21,6 @@ function toDayKey(createdAt) {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
-}
-
-function labelForDayKey(dayKey) {
-  if (dayKey === "unknown") return "";
-  const [y, m, d] = dayKey.split("-").map(Number);
-  const date = new Date(y, m - 1, d);
-
-  const now = new Date();
-  const todayKey = toDayKey(now);
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
-  const yesterdayKey = toDayKey(yesterday);
-
-  if (dayKey === todayKey) return "Today";
-  if (dayKey === yesterdayKey) return "Yesterday";
-  return date.toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" });
 }
 
 function mergeMessages(prev, incoming) {
@@ -69,6 +55,8 @@ function truncate(str, len = 50) {
 
 
 const ChatsPage = ({ user, onLogout }) => {
+  const { t } = useLanguage();
+
   const room = (user.room || "general").trim() || "general";
   const me = user.username;
 
@@ -308,7 +296,7 @@ const ChatsPage = ({ user, onLogout }) => {
         setMessages((prev) =>
           prev.map((m) =>
             String(m.id) === String(messageId)
-              ? { ...m, text: "Bu mesaj silindi", deletedForAll: 1, replyToData: null }
+              ? { ...m, text: "", deletedForAll: 1, replyToData: null }
               : m
           )
         );
@@ -501,6 +489,22 @@ const ChatsPage = ({ user, onLogout }) => {
     requestAnimationFrame(() => scrollToBottom("smooth"));
   };
 
+  const labelForDayKey = useCallback((dayKey) => {
+    if (dayKey === "unknown") return "";
+    const [y, m, d] = dayKey.split("-").map(Number);
+    const date = new Date(y, m - 1, d);
+
+    const now = new Date();
+    const todayKey = toDayKey(now);
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const yesterdayKey = toDayKey(yesterday);
+
+    if (dayKey === todayKey) return t("today");
+    if (dayKey === yesterdayKey) return t("yesterday");
+    return date.toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" });
+  }, [t]);
+
   const items = useMemo(() => {
     const out = [];
     let lastDayKey = null;
@@ -515,18 +519,18 @@ const ChatsPage = ({ user, onLogout }) => {
       out.push({ type: "msg", key: `msg_${m.id}`, msg: m });
     }
     return out;
-  }, [messages]);
+  }, [messages, labelForDayKey]);
 
   const renderStatus = (m) => {
     if (m.system) return null;
     if (m.username !== me) return null;
 
     const s = m.status || "delivered";
-    if (s === "sending") return <span className="msg-status sending">Sending...</span>;
+    if (s === "sending") return <span className="msg-status sending">{t("sendingStatus")}</span>;
     if (s === "delivered") return <span className="msg-status delivered">&#10003;</span>;
     if (s === "seen") {
       return (
-        <span className="msg-status seen" title={m.readAt ? `Oxundu: ${formatTime(m.readAt)}` : "Oxundu"}>
+        <span className="msg-status seen" title={m.readAt ? `${t("read")}: ${formatTime(m.readAt)}` : t("read")}>
           &#10003;&#10003;
         </span>
       );
@@ -541,19 +545,22 @@ const ChatsPage = ({ user, onLogout }) => {
           <div>
             <div className="chat-title">{"Room: #" + room}</div>
             <div className="chat-subtitle">
-              {"Logged in as "}<b>{me}</b>
-              {typingUser ? <span className="typing">{" · " + typingUser + " is typing..."}</span> : null}
+              {t("loggedInAs")}<b>{me}</b>
+              {typingUser ? <span className="typing">{" · " + typingUser + t("isTyping")}</span> : null}
             </div>
           </div>
 
-          <button className="chat-logout" onClick={onLogout}>
-            Logout
-          </button>
+          <div className="chat-top-actions">
+            <SettingsBar />
+            <button className="chat-logout" onClick={onLogout}>
+              {t("logout")}
+            </button>
+          </div>
         </div>
 
         <div className="chat-body">
           <aside className="chat-users">
-            <div className="chat-users-title">Online</div>
+            <div className="chat-users-title">{t("online")}</div>
             <div className="chat-users-list">
               {onlineUsers.map((u) => (
                 <div key={u} className={`chat-user ${u === me ? "me" : ""}`}>
@@ -605,13 +612,13 @@ const ChatsPage = ({ user, onLogout }) => {
                     ) : null}
 
                     {isDeleted ? (
-                      <span className="msg-deleted-text">Bu mesaj silindi</span>
+                      <span className="msg-deleted-text">{t("messageDeleted")}</span>
                     ) : (
                       <span>{m.text}</span>
                     )}
 
                     {m.editedAt && !isDeleted ? (
-                      <span className="msg-edited">(edited)</span>
+                      <span className="msg-edited">{t("edited")}</span>
                     ) : null}
 
                     {isMine && !isDeleted ? (
@@ -644,7 +651,7 @@ const ChatsPage = ({ user, onLogout }) => {
           <div className="edit-banner">
             <div className="edit-banner-bar" />
             <div className="edit-banner-content">
-              <span className="edit-banner-label">Mesaji redakte et</span>
+              <span className="edit-banner-label">{t("editMessage")}</span>
             </div>
             <button className="edit-banner-close" onClick={cancelEdit}>&#10005;</button>
           </div>
@@ -669,12 +676,12 @@ const ChatsPage = ({ user, onLogout }) => {
                 if (replyingTo) cancelReply();
               }
             }}
-            placeholder={editingMessage ? "Yeni mesaj metn..." : "Write a message..."}
+            placeholder={editingMessage ? t("editMessagePlaceholder") : t("writeMessage")}
             autoComplete="off"
           />
 
           <button className="chat-send" onClick={send}>
-            {editingMessage ? "Save" : "Send"}
+            {editingMessage ? t("save") : t("send")}
           </button>
         </div>
       </div>
@@ -687,25 +694,25 @@ const ChatsPage = ({ user, onLogout }) => {
         >
           <button className="context-menu-item" onClick={handleReply}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
-            Reply
+            {t("reply")}
           </button>
 
           {contextMenu.message.username === me ? (
             <button className="context-menu-item" onClick={handleStartEdit}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-              Edit
+              {t("edit")}
             </button>
           ) : null}
 
           <button className="context-menu-item" onClick={handleDeleteForMe}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            Menim ucun sil
+            {t("deleteForMe")}
           </button>
 
           {contextMenu.message.username === me ? (
             <button className="context-menu-item delete" onClick={handleDeleteForEveryone}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-              Hami ucun sil
+              {t("deleteForEveryone")}
             </button>
           ) : null}
         </div>
