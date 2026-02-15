@@ -24,19 +24,19 @@ html, body, #root {
 [data-theme="light"] {
   --app-bg: #f0f2f7;
   --app-text: #1a1f2e;
-  --blob-a-1: #ffcf66;
-  --blob-a-2: #ff8a65;
-  --blob-a-3: #ff80cb;
-  --blob-b-1: #64e0ff;
-  --blob-b-2: #a78bfa;
-  --blob-b-3: #ff8a65;
-  --blob-c-1: #ff8a65;
-  --blob-c-2: #ffcf66;
-  --blob-c-3: #64e0ff;
-  --blob-opacity: 0.25;
-  --grid-line: rgba(0,0,0,0.04);
-  --grid-opacity: 0.12;
-  --noise-opacity: 0.04;
+  --blob-a-1: #ffb000;
+  --blob-a-2: #ff5722;
+  --blob-a-3: #ff4081;
+  --blob-b-1: #00bcd4;
+  --blob-b-2: #7c4dff;
+  --blob-b-3: #ff5722;
+  --blob-c-1: #ff5722;
+  --blob-c-2: #ffb000;
+  --blob-c-3: #00bcd4;
+  --blob-opacity: 0.38;
+  --grid-line: rgba(0,0,0,0.06);
+  --grid-opacity: 0.15;
+  --noise-opacity: 0.06;
 }
 
 body{
@@ -70,15 +70,15 @@ body{
 
 .fx-blob{
   position:absolute;
-  width: 520px;
-  height: 520px;
-  filter: blur(30px);
+  width: 540px;
+  height: 540px;
+  filter: blur(24px);
   opacity: var(--blob-opacity);
   border-radius: 999px;
   mix-blend-mode: screen;
   will-change: transform;
   contain: layout style paint;
-  animation: floaty 6.5s ease-in-out infinite;
+  animation: floaty 8s ease-in-out infinite;
   transition: opacity 0.3s ease;
 }
 
@@ -124,8 +124,7 @@ body{
   background-size: 42px 42px;
   mask-image: radial-gradient(circle at 50% 40%, rgba(0,0,0,1), rgba(0,0,0,0));
   opacity: var(--grid-opacity);
-  will-change: transform;
-  animation: gridMove 9s linear infinite;
+  animation: gridMove 14s linear infinite;
 }
 
 @keyframes gridMove{
@@ -142,24 +141,30 @@ body{
 }
 
 [data-theme="light"] .fx-blob {
-  mix-blend-mode: normal;
+  mix-blend-mode: multiply;
 }
 
 @media (max-width: 768px) {
   .fx-bg .fx-blob {
-    width: 200px;
-    height: 200px;
-    filter: blur(20px);
-    opacity: 0.3;
+    width: 180px;
+    height: 180px;
+    filter: blur(18px);
+    opacity: 0.25;
     animation: none;
+    will-change: auto;
   }
   .fx-bg .fx-grid {
     animation: none;
-    opacity: 0.08;
+    opacity: 0.06;
+    will-change: auto;
   }
   .fx-bg .fx-noise {
     display: none;
   }
+}
+
+[data-theme="light"] .fx-bg .fx-blob {
+  opacity: 0.30;
 }
 
 @media (prefers-reduced-motion: reduce) {

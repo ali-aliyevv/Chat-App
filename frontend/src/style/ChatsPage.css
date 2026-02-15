@@ -78,9 +78,9 @@ body {
 
 /* ── Light theme chat variables ── */
 [data-theme="light"] {
-  --chat-card-bg: rgba(255, 255, 255, 0.72);
-  --chat-card-border: rgba(0,0,0,0.08);
-  --chat-card-shadow: 0 30px 120px rgba(0,0,0,0.08);
+  --chat-card-bg: rgba(255, 255, 255, 0.82);
+  --chat-card-border: rgba(0,0,0,0.10);
+  --chat-card-shadow: 0 30px 120px rgba(0,0,0,0.12), 0 0 0 1px rgba(255,176,0,0.06);
   --chat-top-border: rgba(0,0,0,0.06);
   --chat-title-color: rgba(15, 23, 42, 0.92);
   --chat-subtitle-color: rgba(15, 23, 42, 0.60);
@@ -100,12 +100,12 @@ body {
   --chat-dot-bg: rgba(0, 180, 220, 0.85);
   --chat-dot-shadow: 0 0 18px rgba(0, 180, 220, 0.25);
   --chat-msg-user: rgba(15, 23, 42, 0.55);
-  --chat-bubble-bg: rgba(0,0,0,0.04);
-  --chat-bubble-border: rgba(0,0,0,0.08);
-  --chat-bubble-text: rgba(15, 23, 42, 0.90);
-  --chat-bubble-mine-bg: linear-gradient(135deg, rgba(255,200,80,0.22), rgba(255,120,60,0.18), rgba(255,80,170,0.12));
-  --chat-bubble-mine-border: rgba(0,0,0,0.08);
-  --chat-bubble-system-bg: rgba(0,0,0,0.03);
+  --chat-bubble-bg: rgba(0,0,0,0.05);
+  --chat-bubble-border: rgba(0,0,0,0.10);
+  --chat-bubble-text: rgba(15, 23, 42, 0.92);
+  --chat-bubble-mine-bg: linear-gradient(135deg, rgba(255,176,0,0.20), rgba(255,61,0,0.16), rgba(255,0,170,0.12));
+  --chat-bubble-mine-border: rgba(255,176,0,0.18);
+  --chat-bubble-system-bg: rgba(0,0,0,0.04);
   --chat-day-bg: rgba(0,0,0,0.04);
   --chat-day-border: rgba(0,0,0,0.08);
   --chat-day-text: rgba(15, 23, 42, 0.55);

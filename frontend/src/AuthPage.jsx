@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
 import { api } from "./api";
-import { QRCodeCanvas } from "qrcode.react";
 import { useLanguage } from "./context/LanguageContext";
 import SettingsBar from "./components/SettingsBar";
 import "./style/AuthPage.css";
+
+const QRCodeCanvas = lazy(() =>
+  import("qrcode.react").then((mod) => ({ default: mod.QRCodeCanvas }))
+);
 
 const OTP_TTL_SEC = 5 * 60;
 const RESEND_COOLDOWN_SEC = 60;
@@ -288,7 +291,9 @@ const AuthPage = ({ onAuthed, pendingRoom }) => {
 
                   <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
                     <div style={{ background: "white", padding: 10, borderRadius: 12 }}>
-                      <QRCodeCanvas value={inviteUrl} size={120} />
+                      <Suspense fallback={<div style={{ width: 120, height: 120 }} />}>
+                        <QRCodeCanvas value={inviteUrl} size={120} />
+                      </Suspense>
                     </div>
 
                     <div style={{ display: "grid", gap: 8 }}>

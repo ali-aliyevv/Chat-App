@@ -1,5 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap");
-
 :root,
 [data-theme="dark"] {
   --bg:#060814;
@@ -40,12 +38,12 @@
 
 [data-theme="light"] {
   --bg: #f0f2f7;
-  --card: rgba(255, 255, 255, 0.72);
-  --border: rgba(0,0,0,0.08);
-  --border-hover: rgba(0,0,0,0.18);
-  --text: rgba(15, 23, 42, 0.92);
-  --muted: rgba(15, 23, 42, 0.55);
-  --shadow: 0 30px 80px rgba(0,0,0,0.10);
+  --card: rgba(255, 255, 255, 0.82);
+  --border: rgba(0,0,0,0.10);
+  --border-hover: rgba(0,0,0,0.22);
+  --text: rgba(15, 23, 42, 0.95);
+  --muted: rgba(15, 23, 42, 0.60);
+  --shadow: 0 30px 80px rgba(0,0,0,0.12), 0 0 0 1px rgba(255,176,0,0.08);
   --r: 22px;
   --input-bg: rgba(0,0,0,0.04);
   --input-border: rgba(0,0,0,0.12);
@@ -144,15 +142,20 @@ textarea:-webkit-autofill:focus {
 
 .fx-blob{
   position:absolute;
-  width: 520px;
-  height: 520px;
-  filter: blur(30px);
-  opacity: 0.55;
+  width: 540px;
+  height: 540px;
+  filter: blur(24px);
+  opacity: var(--blob-opacity, 0.55);
   border-radius: 999px;
   mix-blend-mode: screen;
   will-change: transform;
   contain: layout style paint;
-  animation: floaty 6.5s ease-in-out infinite;
+  animation: floaty 8s ease-in-out infinite;
+  transition: opacity 0.3s ease;
+}
+
+[data-theme="light"] .fx-blob {
+  mix-blend-mode: multiply;
 }
 
 @media (max-width: 768px) {
@@ -172,17 +175,17 @@ textarea:-webkit-autofill:focus {
 .fx-blob--a{
   left: -120px;
   top: -140px;
-  background: radial-gradient(circle at 30% 30%, #ffb000, transparent 55%),
-              radial-gradient(circle at 70% 60%, #ff3d00, transparent 55%),
-              radial-gradient(circle at 50% 70%, #ff00aa, transparent 60%);
+  background: radial-gradient(circle at 30% 30%, var(--blob-a-1, #ffb000), transparent 55%),
+              radial-gradient(circle at 70% 60%, var(--blob-a-2, #ff3d00), transparent 55%),
+              radial-gradient(circle at 50% 70%, var(--blob-a-3, #ff00aa), transparent 60%);
 }
 
 .fx-blob--b{
   right: -160px;
   top: 40px;
-  background: radial-gradient(circle at 30% 30%, #00d4ff, transparent 55%),
-              radial-gradient(circle at 70% 60%, #7c3aed, transparent 55%),
-              radial-gradient(circle at 50% 70%, #ff3d00, transparent 62%);
+  background: radial-gradient(circle at 30% 30%, var(--blob-b-1, #00d4ff), transparent 55%),
+              radial-gradient(circle at 70% 60%, var(--blob-b-2, #7c3aed), transparent 55%),
+              radial-gradient(circle at 50% 70%, var(--blob-b-3, #ff3d00), transparent 62%);
   animation-delay: -1.5s;
 }
 
@@ -191,9 +194,9 @@ textarea:-webkit-autofill:focus {
   bottom: -220px;
   width: 620px;
   height: 620px;
-  background: radial-gradient(circle at 30% 30%, #ff3d00, transparent 55%),
-              radial-gradient(circle at 70% 60%, #ffb000, transparent 55%),
-              radial-gradient(circle at 50% 70%, #00d4ff, transparent 62%);
+  background: radial-gradient(circle at 30% 30%, var(--blob-c-1, #ff3d00), transparent 55%),
+              radial-gradient(circle at 70% 60%, var(--blob-c-2, #ffb000), transparent 55%),
+              radial-gradient(circle at 50% 70%, var(--blob-c-3, #00d4ff), transparent 62%);
   animation-delay: -3s;
 }
 
@@ -206,13 +209,12 @@ textarea:-webkit-autofill:focus {
 .fx-grid{
   position:absolute; inset:0;
   background:
-    linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+    linear-gradient(var(--grid-line, rgba(255,255,255,0.05)) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line, rgba(255,255,255,0.05)) 1px, transparent 1px);
   background-size: 42px 42px;
   mask-image: radial-gradient(circle at 50% 40%, rgba(0,0,0,1), rgba(0,0,0,0));
-  opacity: 0.18;
-  will-change: transform;
-  animation: gridMove 9s linear infinite;
+  opacity: var(--grid-opacity, 0.18);
+  animation: gridMove 14s linear infinite;
 }
 
 @keyframes gridMove{
@@ -222,7 +224,7 @@ textarea:-webkit-autofill:focus {
 
 .fx-noise{
   position:absolute; inset:0;
-  opacity: 0.10;
+  opacity: var(--noise-opacity, 0.10);
   background-image:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
   mix-blend-mode: overlay;
@@ -442,6 +444,19 @@ textarea:-webkit-autofill:focus {
 
 [data-theme="light"] .auth-secondary:hover {
   box-shadow: 0 18px 50px rgba(0,0,0,0.10);
+}
+
+[data-theme="light"] .auth-input:focus {
+  border-color: rgba(255,140,0,0.50);
+  box-shadow: 0 0 0 4px rgba(255, 140, 0, 0.12);
+}
+
+[data-theme="light"] .auth-primary {
+  box-shadow: 0 18px 45px rgba(255, 61, 0, 0.14);
+}
+
+[data-theme="light"] .auth-primary:hover {
+  box-shadow: 0 22px 65px rgba(255, 61, 0, 0.22);
 }
 
 .auth-hint{
