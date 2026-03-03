@@ -49,6 +49,8 @@ export const translations = {
     deleteForEveryone: "Hamı üçün sil",
     messageDeleted: "Bu mesaj silindi",
     editMessage: "Mesajı redaktə et",
+    voiceMessage: "Səs mesajı",
+    recording: "Yazılır...",
     // Settings
     language: "Dil",
     theme: "Tema",
@@ -106,6 +108,8 @@ export const translations = {
     deleteForEveryone: "Delete for everyone",
     messageDeleted: "This message was deleted",
     editMessage: "Edit message",
+    voiceMessage: "Voice message",
+    recording: "Recording...",
     // Settings
     language: "Language",
     theme: "Theme",
@@ -163,6 +167,8 @@ export const translations = {
     deleteForEveryone: "Удалить для всех",
     messageDeleted: "Сообщение удалено",
     editMessage: "Редактировать сообщение",
+    voiceMessage: "Голосовое сообщение",
+    recording: "Запись...",
     // Settings
     language: "Язык",
     theme: "Тема",
