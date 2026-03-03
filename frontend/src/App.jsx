@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import AuthPage from "./AuthPage";
 import ChatsPage from "./ChatsPage";
-import { api } from "./api";
+import { api, setOnAuthFail } from "./api";
 import "./App.css";
 
 export default function App() {
@@ -22,6 +22,12 @@ export default function App() {
     } finally {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
+  }, []);
+
+  useEffect(() => {
+    setOnAuthFail(() => {
+      setUser(null);
+    });
   }, []);
 
   useEffect(() => {
