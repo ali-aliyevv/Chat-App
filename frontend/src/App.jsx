@@ -1,14 +1,13 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import AuthPage from "./AuthPage";
 import ChatsPage from "./ChatsPage";
-import { api, setOnAuthFail } from "./api";
+import { api } from "./api";
 import "./App.css";
 
 export default function App() {
   const [user, setUser] = useState(null);
   const [pendingRoom, setPendingRoom] = useState(null);
   const [loading, setLoading] = useState(true);
-  const skipMeCheckRef = useRef(false);
 
   const resolveInviteIfAny = useCallback(async () => {
     const params = new URLSearchParams(window.location.search);
@@ -26,23 +25,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    setOnAuthFail(() => {
-      setUser(null);
-      skipMeCheckRef.current = false;
-    });
-  }, []);
-
-  useEffect(() => {
     const boot = async () => {
       try {
         const inviteRoom = await resolveInviteIfAny();
-
-        // Skip /api/me check if we just logged in or registered
-        if (skipMeCheckRef.current) {
-          skipMeCheckRef.current = false;
-          setLoading(false);
-          return;
-        }
 
         const me = await api.get("/api/me");
         if (me.data?.authenticated) {
@@ -82,9 +67,7 @@ export default function App() {
   const handleAuthed = (u) => {
     const room = (u.room || pendingRoom || "general").trim() || "general";
     setUser({ username: u.username, room });
-    setPendingRoom(null);
-    // Skip /api/me check on next boot since we just authenticated
-    skipMeCheckRef.current = true;
+    setPendingRoom(null); 
   };
 
   if (loading) return null;
