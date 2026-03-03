@@ -8,6 +8,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [pendingRoom, setPendingRoom] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [skipMeCheckRef] = useState(() => ({ value: false }));
 
   const resolveInviteIfAny = useCallback(async () => {
     const params = new URLSearchParams(window.location.search);
@@ -27,13 +28,21 @@ export default function App() {
   useEffect(() => {
     setOnAuthFail(() => {
       setUser(null);
+      skipMeCheckRef.value = false;
     });
-  }, []);
+  }, [skipMeCheckRef]);
 
   useEffect(() => {
     const boot = async () => {
       try {
         const inviteRoom = await resolveInviteIfAny();
+
+        // Skip /api/me check if we just logged in or registered
+        if (skipMeCheckRef.value) {
+          skipMeCheckRef.value = false;
+          setLoading(false);
+          return;
+        }
 
         const me = await api.get("/api/me");
         if (me.data?.authenticated) {
@@ -49,7 +58,7 @@ export default function App() {
     };
 
     boot();
-  }, [resolveInviteIfAny]);
+  }, [resolveInviteIfAny, skipMeCheckRef]);
 
   useEffect(() => {
     const onPopState = async () => {
@@ -73,7 +82,9 @@ export default function App() {
   const handleAuthed = (u) => {
     const room = (u.room || pendingRoom || "general").trim() || "general";
     setUser({ username: u.username, room });
-    setPendingRoom(null); 
+    setPendingRoom(null);
+    // Skip /api/me check on next boot since we just authenticated
+    skipMeCheckRef.value = true;
   };
 
   if (loading) return null;
