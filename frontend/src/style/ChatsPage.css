@@ -399,15 +399,21 @@ body {
 }
 
 .chat-send{
-  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
   border:none;
-  border-radius: 14px;
+  border-radius: 50%;
   font-weight: 900;
   cursor:pointer;
   color: #0b0f1a;
   background: linear-gradient(135deg, #ffb000, #ff3d00 55%, #ff00aa);
   transition: .18s ease;
   box-shadow: 0 18px 45px rgba(255, 61, 0, 0.22);
+  flex-shrink: 0;
 }
 .chat-send:hover{
   transform: translateY(-2px);
@@ -625,8 +631,8 @@ body {
   }
 
   .emoji-picker-popover {
-    left: 0;
-    right: auto;
+    right: 0;
+    left: auto;
   }
 }
 
@@ -660,7 +666,7 @@ body {
 .emoji-picker-popover {
   position: absolute;
   bottom: 52px;
-  left: 0;
+  right: 0;
   z-index: 100;
   border-radius: 14px;
   overflow: hidden;

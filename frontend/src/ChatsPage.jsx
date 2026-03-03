@@ -4,6 +4,7 @@ import EmojiPicker from "emoji-picker-react";
 import { socket } from "./socket";
 import { api } from "./api";
 import { useLanguage } from "./context/LanguageContext";
+import { useTheme } from "./context/ThemeContext";
 import SettingsBar from "./components/SettingsBar";
 import "./style/ChatsPage.css";
 
@@ -116,6 +117,7 @@ VoicePlayer.propTypes = { src: PropTypes.string.isRequired };
 
 const ChatsPage = ({ user, onLogout }) => {
   const { t } = useLanguage();
+  const { resolved: resolvedTheme } = useTheme();
 
   const room = (user.room || "general").trim() || "general";
   const me = user.username;
@@ -868,35 +870,6 @@ const ChatsPage = ({ user, onLogout }) => {
         ) : null}
 
         <div className="chat-inputRow">
-          {/* Emoji picker toggle */}
-          <div className="emoji-picker-wrapper" ref={emojiPickerRef}>
-            <button
-              className="chat-icon-btn"
-              onClick={() => setShowEmojiPicker((p) => !p)}
-              type="button"
-              aria-label="Emoji"
-            >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
-                <line x1="9" y1="9" x2="9.01" y2="9"/>
-                <line x1="15" y1="9" x2="15.01" y2="9"/>
-              </svg>
-            </button>
-            {showEmojiPicker ? (
-              <div className="emoji-picker-popover">
-                <EmojiPicker
-                  onEmojiClick={onEmojiClick}
-                  width={320}
-                  height={400}
-                  searchDisabled={false}
-                  skinTonesDisabled
-                  previewConfig={{ showPreview: false }}
-                />
-              </div>
-            ) : null}
-          </div>
-
           {isRecording ? (
             /* ── Recording UI ── */
             <div className="recording-row">
@@ -949,8 +922,42 @@ const ChatsPage = ({ user, onLogout }) => {
                 </button>
               ) : null}
 
-              <button className="chat-send" onClick={send}>
-                {editingMessage ? t("save") : t("send")}
+              {/* Emoji picker toggle - right side */}
+              <div className="emoji-picker-wrapper" ref={emojiPickerRef}>
+                <button
+                  className="chat-icon-btn"
+                  onClick={() => setShowEmojiPicker((p) => !p)}
+                  type="button"
+                  aria-label="Emoji"
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+                    <line x1="9" y1="9" x2="9.01" y2="9"/>
+                    <line x1="15" y1="9" x2="15.01" y2="9"/>
+                  </svg>
+                </button>
+                {showEmojiPicker ? (
+                  <div className="emoji-picker-popover">
+                    <EmojiPicker
+                      onEmojiClick={onEmojiClick}
+                      width={320}
+                      height={400}
+                      searchDisabled={false}
+                      skinTonesDisabled
+                      previewConfig={{ showPreview: false }}
+                      theme={resolvedTheme === "dark" ? "dark" : "light"}
+                    />
+                  </div>
+                ) : null}
+              </div>
+
+              <button className="chat-send" onClick={send} aria-label={editingMessage ? t("save") : t("send")}>
+                {editingMessage ? (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                ) : (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                )}
               </button>
             </>
           )}
