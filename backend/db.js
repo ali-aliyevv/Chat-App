@@ -94,6 +94,8 @@ try {
   ensureColumn("messages", "deleted_for_all", "INTEGER DEFAULT 0");
   ensureColumn("messages", "reply_to", "TEXT");
   ensureColumn("messages", "read_at", "INTEGER");
+  ensureColumn("messages", "type", "TEXT DEFAULT 'text'");
+  ensureColumn("messages", "voice_url", "TEXT");
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS deleted_messages (
@@ -182,15 +184,15 @@ const stmtDeleteOtp = db.prepare(`DELETE FROM otp_codes WHERE email = ?`);
 const stmtDeleteExpiredOtps = db.prepare(`DELETE FROM otp_codes WHERE expires_at < ?`);
 
 const stmtAddMessage = db.prepare(`
-  INSERT INTO messages (id, room, client_id, username, text, system, created_at, reply_to)
-  VALUES (@id, @room, @client_id, @username, @text, @system, @created_at, @reply_to)
+  INSERT INTO messages (id, room, client_id, username, text, system, created_at, reply_to, type, voice_url)
+  VALUES (@id, @room, @client_id, @username, @text, @system, @created_at, @reply_to, @type, @voice_url)
 `);
 
 const stmtGetRecentMessages = db.prepare(`
   SELECT id, room, client_id as clientId, username, text, system,
          created_at as createdAt, edited_at as editedAt,
          deleted_for_all as deletedForAll, reply_to as replyTo,
-         read_at as readAt
+         read_at as readAt, type, voice_url as voiceUrl
   FROM messages
   WHERE room = ?
   ORDER BY created_at DESC
@@ -201,7 +203,7 @@ const stmtGetMessageById = db.prepare(`
   SELECT id, room, client_id as clientId, username, text, system,
          created_at as createdAt, edited_at as editedAt,
          deleted_for_all as deletedForAll, reply_to as replyTo,
-         read_at as readAt
+         read_at as readAt, type, voice_url as voiceUrl
   FROM messages WHERE id = ?
 `);
 
@@ -209,7 +211,7 @@ const stmtGetMessageByClientId = db.prepare(`
   SELECT id, room, client_id as clientId, username, text, system,
          created_at as createdAt, edited_at as editedAt,
          deleted_for_all as deletedForAll, reply_to as replyTo,
-         read_at as readAt
+         read_at as readAt, type, voice_url as voiceUrl
   FROM messages WHERE client_id = ?
 `);
 
@@ -310,7 +312,7 @@ function deleteExpiredOtps() {
   stmtDeleteExpiredOtps.run(Date.now());
 }
 
-function addMessage({ id, room, clientId, username, text, system, createdAt, replyTo }) {
+function addMessage({ id, room, clientId, username, text, system, createdAt, replyTo, type, voiceUrl }) {
   stmtAddMessage.run({
     id: String(id),
     room: String(room),
@@ -320,6 +322,8 @@ function addMessage({ id, room, clientId, username, text, system, createdAt, rep
     system: system ? 1 : 0,
     created_at: typeof createdAt === "number" ? createdAt : Date.now(),
     reply_to: replyTo ? String(replyTo) : null,
+    type: type || "text",
+    voice_url: voiceUrl || null,
   });
 }
 
