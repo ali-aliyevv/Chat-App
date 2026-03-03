@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense, memo } from "react";
 import PropTypes from "prop-types";
-import EmojiPicker from "emoji-picker-react";
 import { socket } from "./socket";
 import { api } from "./api";
 import { useLanguage } from "./context/LanguageContext";
 import { useTheme } from "./context/ThemeContext";
 import SettingsBar from "./components/SettingsBar";
 import "./style/ChatsPage.css";
+
+const LazyEmojiPicker = lazy(() => import("emoji-picker-react"));
 
 
 function formatTime(createdAt) {
@@ -63,7 +64,7 @@ function truncate(str, len = 50) {
 
 
 /* ── Voice player sub-component ── */
-function VoicePlayer({ src }) {
+const VoicePlayer = memo(function VoicePlayer({ src }) {
   const audioRef = useRef(null);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -110,7 +111,7 @@ function VoicePlayer({ src }) {
       <span className="voice-duration">{formatDuration(duration)}</span>
     </div>
   );
-}
+});
 
 VoicePlayer.propTypes = { src: PropTypes.string.isRequired };
 
@@ -888,19 +889,26 @@ const ChatsPage = ({ user, onLogout }) => {
           ) : (
             /* ── Normal input UI ── */
             <>
-              <input
+              <textarea
                 ref={inputRef}
                 className="chat-input"
                 value={text}
+                rows={1}
                 onChange={(e) => {
                   const v = e.target.value;
                   setText(v);
+                  /* auto-resize */
+                  e.target.style.height = "auto";
+                  e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
                   if (!editingMessage) {
                     socket.emit("typing", { room, isTyping: v.trim().length > 0 });
                   }
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") send();
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    send();
+                  }
                   if (e.key === "Escape") {
                     if (editingMessage) cancelEdit();
                     if (replyingTo) cancelReply();

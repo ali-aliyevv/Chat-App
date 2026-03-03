@@ -76,9 +76,9 @@ body{
   opacity: var(--blob-opacity);
   border-radius: 999px;
   mix-blend-mode: screen;
-  will-change: transform;
+  will-change: auto;
   contain: layout style paint;
-  animation: floaty 6.5s ease-in-out infinite;
+  animation: floaty 18s ease-in-out infinite;
   transition: opacity 0.3s ease;
 }
 
@@ -96,7 +96,7 @@ body{
   background: radial-gradient(circle at 30% 30%, var(--blob-b-1), transparent 55%),
               radial-gradient(circle at 70% 60%, var(--blob-b-2), transparent 55%),
               radial-gradient(circle at 50% 70%, var(--blob-b-3), transparent 62%);
-  animation-delay: -1.5s;
+  animation-delay: -5s;
 }
 
 .fx-blob--c{
@@ -107,12 +107,12 @@ body{
   background: radial-gradient(circle at 30% 30%, var(--blob-c-1), transparent 55%),
               radial-gradient(circle at 70% 60%, var(--blob-c-2), transparent 55%),
               radial-gradient(circle at 50% 70%, var(--blob-c-3), transparent 62%);
-  animation-delay: -3s;
+  animation-delay: -9s;
 }
 
 @keyframes floaty{
   0%   { transform: translate3d(0,0,0) scale(1); }
-  50%  { transform: translate3d(50px, -36px, 0) scale(1.08); }
+  50%  { transform: translate3d(30px, -20px, 0) scale(1.04); }
   100% { transform: translate3d(0,0,0) scale(1); }
 }
 
@@ -124,8 +124,8 @@ body{
   background-size: 42px 42px;
   mask-image: radial-gradient(circle at 50% 40%, rgba(0,0,0,1), rgba(0,0,0,0));
   opacity: var(--grid-opacity);
-  will-change: transform;
-  animation: gridMove 9s linear infinite;
+  will-change: auto;
+  animation: gridMove 30s linear infinite;
 }
 
 @keyframes gridMove{
