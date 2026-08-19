@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PropTypes from "prop-types";
+import EmojiPicker from "emoji-picker-react";
 import { socket } from "./socket";
 import { api } from "./api";
 import { useLanguage } from "./context/LanguageContext";
 import { useCall } from "./hooks/useCall";
+import { useTheme } from "./context/ThemeContext";
 import SettingsBar from "./components/SettingsBar";
 import CallModal from "./components/CallModal";
 import "./style/ChatsPage.css";
@@ -14,6 +16,12 @@ function formatTime(createdAt) {
   const d = typeof createdAt === "number" ? new Date(createdAt) : new Date(createdAt);
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatDuration(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 function toDayKey(createdAt) {
@@ -91,8 +99,62 @@ const DocIcon = () => (
 );
 
 
+/* ── Voice player sub-component ── */
+function VoicePlayer({ src }) {
+  const audioRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  const toggle = () => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (playing) { a.pause(); } else { a.play(); }
+  };
+
+  return (
+    <div className="voice-player">
+      <audio
+        ref={audioRef}
+        src={src}
+        preload="metadata"
+        onLoadedMetadata={() => setDuration(audioRef.current?.duration || 0)}
+        onTimeUpdate={() => {
+          const a = audioRef.current;
+          if (a && a.duration) setProgress((a.currentTime / a.duration) * 100);
+        }}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => { setPlaying(false); setProgress(0); }}
+      />
+      <button className="voice-play-btn" onClick={toggle} type="button" aria-label={playing ? "Pause" : "Play"}>
+        {playing ? (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+        ) : (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+        )}
+      </button>
+      <div className="voice-track" onClick={(e) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const pct = (e.clientX - rect.left) / rect.width;
+        if (audioRef.current && audioRef.current.duration) {
+          audioRef.current.currentTime = pct * audioRef.current.duration;
+          setProgress(pct * 100);
+        }
+      }}>
+        <div className="voice-track-fill" style={{ width: `${progress}%` }} />
+      </div>
+      <span className="voice-duration">{formatDuration(duration)}</span>
+    </div>
+  );
+}
+
+VoicePlayer.propTypes = { src: PropTypes.string.isRequired };
+
+
 const ChatsPage = ({ user, onLogout }) => {
   const { t } = useLanguage();
+  const { resolved: resolvedTheme } = useTheme();
 
   const room = (user.room || "general").trim() || "general";
   const me = user.username;
@@ -112,6 +174,16 @@ const ChatsPage = ({ user, onLogout }) => {
   const [callErrorMsg, setCallErrorMsg] = useState(null);
 
   const call = useCall();
+  /* ── Emoji picker state ── */
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const emojiPickerRef = useRef(null);
+
+  /* ── Voice recording state ── */
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const recordingTimerRef = useRef(null);
 
   const messagesBoxRef = useRef(null);
   const shouldAutoScrollRef = useRef(true);
@@ -128,6 +200,17 @@ const ChatsPage = ({ user, onLogout }) => {
   useEffect(() => {
     messagesStateRef.current = messages;
   }, [messages]);
+
+  /* ── Close emoji picker on outside click ── */
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target)) {
+        setShowEmojiPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const resolveServerMessageId = useCallback((maybeId) => {
     const id = String(maybeId || "");
@@ -353,11 +436,20 @@ const ChatsPage = ({ user, onLogout }) => {
     const onMessageEdited = ({ messageId, newText, editedAt }) => {
       if (!mounted) return;
       setMessages((prev) =>
-        prev.map((m) =>
-          String(m.id) === String(messageId)
-            ? { ...m, text: newText, editedAt }
-            : m
-        )
+        prev.map((m) => {
+          /* Update the edited message itself */
+          if (String(m.id) === String(messageId)) {
+            return { ...m, text: newText, editedAt };
+          }
+          /* FIX: Also update any message that has a replyToData pointing to the edited message */
+          if (m.replyToData && String(m.replyToData.id) === String(messageId)) {
+            return {
+              ...m,
+              replyToData: { ...m.replyToData, text: truncate(newText, 80) },
+            };
+          }
+          return m;
+        })
       );
     };
 
@@ -483,6 +575,7 @@ const ChatsPage = ({ user, onLogout }) => {
   const handleStartEdit = useCallback(() => {
     if (!contextMenu?.message) return;
     const m = contextMenu.message;
+    if (m.type === "voice") return; // cannot edit voice messages
     setEditingMessage({ id: m.id, text: m.text });
     setText(m.text);
     setReplyingTo(null);
@@ -512,6 +605,119 @@ const ChatsPage = ({ user, onLogout }) => {
     socket.emit("message:delete", { messageId: realId, deleteFor: "everyone" });
     setContextMenu(null);
   }, [contextMenu, resolveServerMessageId]);
+
+  /* ── Emoji handler ── */
+  const onEmojiClick = useCallback((emojiData) => {
+    setText((prev) => prev + emojiData.emoji);
+    inputRef.current?.focus();
+  }, []);
+
+  /* ── Voice recording handlers ── */
+  const startRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+      };
+
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setIsRecording(true);
+      setRecordingTime(0);
+
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingTime((prev) => prev + 1);
+      }, 1000);
+    } catch {
+      /* user denied mic access */
+    }
+  }, []);
+
+  const stopRecording = useCallback(() => {
+    return new Promise((resolve) => {
+      const recorder = mediaRecorderRef.current;
+      if (!recorder || recorder.state === "inactive") { resolve(null); return; }
+
+      recorder.onstop = () => {
+        recorder.stream?.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        resolve(blob);
+      };
+
+      recorder.stop();
+      setIsRecording(false);
+      clearInterval(recordingTimerRef.current);
+    });
+  }, []);
+
+  const cancelRecording = useCallback(() => {
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.onstop = () => {
+        recorder.stream?.getTracks().forEach((t) => t.stop());
+      };
+      recorder.stop();
+    }
+    setIsRecording(false);
+    setRecordingTime(0);
+    clearInterval(recordingTimerRef.current);
+    audioChunksRef.current = [];
+  }, []);
+
+  const sendVoice = useCallback(async () => {
+    const blob = await stopRecording();
+    if (!blob || blob.size === 0) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result; // data:audio/webm;base64,...
+
+      shouldAutoScrollRef.current = true;
+      const tmpId = `tmp_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      const nowIso = new Date().toISOString();
+
+      const optimistic = {
+        id: tmpId,
+        room,
+        clientId: tmpId,
+        username: me,
+        text: t("voiceMessage"),
+        system: false,
+        createdAt: nowIso,
+        status: "sending",
+        replyTo: replyingTo?.id || null,
+        replyToData: replyingTo
+          ? { id: replyingTo.id, username: replyingTo.username, text: truncate(replyingTo.text, 80) }
+          : null,
+        editedAt: null,
+        deletedForAll: 0,
+        type: "voice",
+        voiceUrl: base64,
+      };
+
+      setMessages((prev) => mergeMessages(prev, [optimistic]));
+
+      socket.emit("message:send", {
+        room,
+        text: t("voiceMessage"),
+        clientId: tmpId,
+        replyTo: replyingTo?.id || null,
+        type: "voice",
+        voiceData: base64,
+      });
+
+      setReplyingTo(null);
+      requestAnimationFrame(() => scrollToBottom("smooth"));
+    };
+    reader.readAsDataURL(blob);
+  }, [stopRecording, room, me, replyingTo, scrollToBottom, t]);
 
   const send = () => {
     const clean = text.trim();
@@ -545,6 +751,7 @@ const ChatsPage = ({ user, onLogout }) => {
         : null,
       editedAt: null,
       deletedForAll: 0,
+      type: "text",
     };
 
     setMessages((prev) => mergeMessages(prev, [optimistic]));
@@ -558,6 +765,7 @@ const ChatsPage = ({ user, onLogout }) => {
 
     setText("");
     setReplyingTo(null);
+    setShowEmojiPicker(false);
     socket.emit("typing", { room, isTyping: false });
 
     requestAnimationFrame(() => scrollToBottom("smooth"));
@@ -758,6 +966,7 @@ const ChatsPage = ({ user, onLogout }) => {
               const time = formatTime(m.createdAt);
               const isMine = !m.system && m.username === me;
               const isDeleted = !!m.deletedForAll;
+              const isVoice = m.type === "voice" && m.voiceUrl;
 
               return (
                 <div
@@ -786,6 +995,8 @@ const ChatsPage = ({ user, onLogout }) => {
 
                     {isDeleted ? (
                       <span className="msg-deleted-text">{t("messageDeleted")}</span>
+                    ) : isVoice ? (
+                      <VoicePlayer src={m.voiceUrl} />
                     ) : (
                       <>
                         {m.attachmentUrl ? (
@@ -909,10 +1120,97 @@ const ChatsPage = ({ user, onLogout }) => {
             placeholder={editingMessage ? t("editMessagePlaceholder") : t("writeMessage")}
             autoComplete="off"
           />
+          {isRecording ? (
+            /* ── Recording UI ── */
+            <div className="recording-row">
+              <div className="recording-indicator">
+                <span className="recording-dot" />
+                <span className="recording-label">{t("recording")}</span>
+                <span className="recording-timer">{formatDuration(recordingTime)}</span>
+              </div>
+              <button className="chat-icon-btn recording-cancel" onClick={cancelRecording} type="button" aria-label="Cancel recording">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+              <button className="chat-send" onClick={sendVoice} type="button" aria-label="Send voice">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              </button>
+            </div>
+          ) : (
+            /* ── Normal input UI ── */
+            <>
+              <input
+                ref={inputRef}
+                className="chat-input"
+                value={text}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setText(v);
+                  if (!editingMessage) {
+                    socket.emit("typing", { room, isTyping: v.trim().length > 0 });
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") send();
+                  if (e.key === "Escape") {
+                    if (editingMessage) cancelEdit();
+                    if (replyingTo) cancelReply();
+                  }
+                }}
+                placeholder={editingMessage ? t("editMessagePlaceholder") : t("writeMessage")}
+                autoComplete="off"
+              />
 
-          <button className="chat-send" onClick={send}>
-            {editingMessage ? t("save") : t("send")}
-          </button>
+              {/* Voice record button (only when no text) */}
+              {!text.trim() && !editingMessage ? (
+                <button className="chat-icon-btn" onClick={startRecording} type="button" aria-label="Record voice">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                    <line x1="12" y1="19" x2="12" y2="23"/>
+                    <line x1="8" y1="23" x2="16" y2="23"/>
+                  </svg>
+                </button>
+              ) : null}
+
+              {/* Emoji picker toggle - right side */}
+              <div className="emoji-picker-wrapper" ref={emojiPickerRef}>
+                <button
+                  className="chat-icon-btn"
+                  onClick={() => setShowEmojiPicker((p) => !p)}
+                  type="button"
+                  aria-label="Emoji"
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+                    <line x1="9" y1="9" x2="9.01" y2="9"/>
+                    <line x1="15" y1="9" x2="15.01" y2="9"/>
+                  </svg>
+                </button>
+                {showEmojiPicker ? (
+                  <div className="emoji-picker-popover">
+                    <EmojiPicker
+                      onEmojiClick={onEmojiClick}
+                      width={320}
+                      height={400}
+                      searchDisabled={false}
+                      skinTonesDisabled
+                      previewConfig={{ showPreview: false }}
+                      theme={resolvedTheme === "dark" ? "dark" : "light"}
+                    />
+                  </div>
+                ) : null}
+              </div>
+
+              <button className="chat-send" onClick={send} aria-label={editingMessage ? t("save") : t("send")}>
+                {editingMessage ? (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                ) : (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                )}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -927,7 +1225,7 @@ const ChatsPage = ({ user, onLogout }) => {
             {t("reply")}
           </button>
 
-          {contextMenu.message.username === me ? (
+          {contextMenu.message.username === me && contextMenu.message.type !== "voice" ? (
             <button className="context-menu-item" onClick={handleStartEdit}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
               {t("edit")}

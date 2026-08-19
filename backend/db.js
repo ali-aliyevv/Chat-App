@@ -102,6 +102,8 @@ try {
   ensureColumn("messages", "attachment_name", "TEXT");
   ensureColumn("messages", "attachment_type", "TEXT");
   ensureColumn("messages", "attachment_size", "INTEGER");
+  ensureColumn("messages", "type", "TEXT DEFAULT 'text'");
+  ensureColumn("messages", "voice_url", "TEXT");
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS deleted_messages (
@@ -190,19 +192,28 @@ const stmtDeleteOtp = db.prepare(`DELETE FROM otp_codes WHERE email = ?`);
 const stmtDeleteExpiredOtps = db.prepare(`DELETE FROM otp_codes WHERE expires_at < ?`);
 
 const stmtAddMessage = db.prepare(`
+<<<<<<< HEAD
   INSERT INTO messages (id, room, client_id, username, text, system, created_at, reply_to,
                          attachment_url, attachment_name, attachment_type, attachment_size)
   VALUES (@id, @room, @client_id, @username, @text, @system, @created_at, @reply_to,
           @attachment_url, @attachment_name, @attachment_type, @attachment_size)
+=======
+  INSERT INTO messages (id, room, client_id, username, text, system, created_at, reply_to, type, voice_url)
+  VALUES (@id, @room, @client_id, @username, @text, @system, @created_at, @reply_to, @type, @voice_url)
+>>>>>>> 60f1dbe04fbe8939c76bfaf92d7708ea15b3fde2
 `);
 
 const stmtGetRecentMessages = db.prepare(`
   SELECT id, room, client_id as clientId, username, text, system,
          created_at as createdAt, edited_at as editedAt,
          deleted_for_all as deletedForAll, reply_to as replyTo,
+<<<<<<< HEAD
          read_at as readAt,
          attachment_url as attachmentUrl, attachment_name as attachmentName,
          attachment_type as attachmentType, attachment_size as attachmentSize
+=======
+         read_at as readAt, type, voice_url as voiceUrl
+>>>>>>> 60f1dbe04fbe8939c76bfaf92d7708ea15b3fde2
   FROM messages
   WHERE room = ?
   ORDER BY created_at DESC
@@ -213,9 +224,13 @@ const stmtGetMessageById = db.prepare(`
   SELECT id, room, client_id as clientId, username, text, system,
          created_at as createdAt, edited_at as editedAt,
          deleted_for_all as deletedForAll, reply_to as replyTo,
+<<<<<<< HEAD
          read_at as readAt,
          attachment_url as attachmentUrl, attachment_name as attachmentName,
          attachment_type as attachmentType, attachment_size as attachmentSize
+=======
+         read_at as readAt, type, voice_url as voiceUrl
+>>>>>>> 60f1dbe04fbe8939c76bfaf92d7708ea15b3fde2
   FROM messages WHERE id = ?
 `);
 
@@ -223,9 +238,13 @@ const stmtGetMessageByClientId = db.prepare(`
   SELECT id, room, client_id as clientId, username, text, system,
          created_at as createdAt, edited_at as editedAt,
          deleted_for_all as deletedForAll, reply_to as replyTo,
+<<<<<<< HEAD
          read_at as readAt,
          attachment_url as attachmentUrl, attachment_name as attachmentName,
          attachment_type as attachmentType, attachment_size as attachmentSize
+=======
+         read_at as readAt, type, voice_url as voiceUrl
+>>>>>>> 60f1dbe04fbe8939c76bfaf92d7708ea15b3fde2
   FROM messages WHERE client_id = ?
 `);
 
@@ -327,6 +346,7 @@ function deleteExpiredOtps() {
 }
 
 function addMessage({ id, room, clientId, username, text, system, createdAt, replyTo, attachment }) {
+function addMessage({ id, room, clientId, username, text, system, createdAt, replyTo, type, voiceUrl }) {
   stmtAddMessage.run({
     id: String(id),
     room: String(room),
@@ -340,6 +360,8 @@ function addMessage({ id, room, clientId, username, text, system, createdAt, rep
     attachment_name: attachment?.name ? String(attachment.name) : null,
     attachment_type: attachment?.type ? String(attachment.type) : null,
     attachment_size: typeof attachment?.size === "number" ? attachment.size : null,
+    type: type || "text",
+    voice_url: voiceUrl || null,
   });
 }
 
@@ -408,4 +430,5 @@ module.exports = {
   deleteMessageForUser,
   getDeletedMessageIdsForUser,
   markReadForRoomExceptUser,
+}
 };

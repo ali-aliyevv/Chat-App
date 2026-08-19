@@ -73,6 +73,8 @@ export const translations = {
     cameraOn: "Kameranı aç",
     noOneToCall: "Otaqda zəng ediləcək başqa istifadəçi yoxdur",
     micDenied: "Mikrofona/kameraya icazə verilmədi",
+    voiceMessage: "Səs mesajı",
+    recording: "Yazılır...",
     // Settings
     language: "Dil",
     theme: "Tema",
@@ -154,6 +156,8 @@ export const translations = {
     cameraOn: "Turn on camera",
     noOneToCall: "No other user in the room to call",
     micDenied: "Microphone/camera permission denied",
+    voiceMessage: "Voice message",
+    recording: "Recording...",
     // Settings
     language: "Language",
     theme: "Theme",
@@ -235,6 +239,8 @@ export const translations = {
     cameraOn: "Включить камеру",
     noOneToCall: "В комнате нет другого пользователя для звонка",
     micDenied: "Доступ к микрофону/камере запрещён",
+    voiceMessage: "Голосовое сообщение",
+    recording: "Запись...",
     // Settings
     language: "Язык",
     theme: "Тема",

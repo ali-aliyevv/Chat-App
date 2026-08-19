@@ -416,6 +416,7 @@ app.get("/api/me", optionalAuth, (req, res) => {
 
 const io = new Server(server, {
   cors: { origin: FRONTEND_ORIGIN, credentials: true },
+  maxHttpBufferSize: 5e6,
 });
 
 function parseCookies(cookieHeader) {
@@ -508,7 +509,9 @@ io.on("connection", (socket) => {
   });
 
   socket.on("message:send", ({ room, text, clientId, replyTo, attachment }) => {
+  socket.on("message:send", ({ room, text, clientId, replyTo, type, voiceData }) => {
     const r = String(room || socket.data.room || "general").trim() || "general";
+    const msgType = type === "voice" ? "voice" : "text";
     const t = String(text || "").trim();
 
     let att = null;
@@ -522,6 +525,8 @@ io.on("connection", (socket) => {
     }
 
     if (!t && !att) return;
+    if (msgType === "text" && !t) return;
+    if (msgType === "voice" && !voiceData) return;
 
     let replyToData = null;
     if (replyTo) {
@@ -540,7 +545,7 @@ io.on("connection", (socket) => {
       room: r,
       clientId: clientId ? String(clientId) : null,
       username: socket.user.username,
-      text: t,
+      text: msgType === "voice" ? (t || "Voice message") : t,
       system: false,
       createdAt: Date.now(),
       replyTo: replyTo ? String(replyTo) : null,
@@ -552,6 +557,8 @@ io.on("connection", (socket) => {
       attachmentName: att?.name || null,
       attachmentType: att?.type || null,
       attachmentSize: att?.size ?? null,
+      type: msgType,
+      voiceUrl: msgType === "voice" ? voiceData : null,
     };
 
     addMessage({ ...msg, attachment: att });
@@ -725,4 +732,5 @@ io.on("connection", (socket) => {
 });
 
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => console.log(`Backend running on http://localhost:${PORT}`));
+server.listen(PORT, () => console.log(`Backend running on http://localhost:${PORT}`))
+});

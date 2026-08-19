@@ -525,15 +525,21 @@ body {
 }
 
 .chat-send{
-  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
   border:none;
-  border-radius: 14px;
+  border-radius: 50%;
   font-weight: 900;
   cursor:pointer;
   color: #0b0f1a;
   background: linear-gradient(135deg, #ffb000, #ff3d00 55%, #ff00aa);
   transition: .18s ease;
   box-shadow: 0 18px 45px rgba(255, 61, 0, 0.22);
+  flex-shrink: 0;
 }
 .chat-send:hover{
   transform: translateY(-2px);
@@ -749,4 +755,160 @@ body {
   .chat-shell {
     padding: 12px;
   }
+
+  .emoji-picker-popover {
+    right: 0;
+    left: auto;
+  }
+}
+
+/* ── Emoji picker ── */
+.emoji-picker-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.chat-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid var(--chat-input-border);
+  background: var(--chat-input-bg);
+  color: var(--chat-input-text);
+  cursor: pointer;
+  transition: 0.2s ease;
+  flex-shrink: 0;
+}
+
+.chat-icon-btn:hover {
+  border-color: rgba(255, 184, 0, 0.55);
+  background: var(--chat-ctx-hover);
+}
+
+.emoji-picker-popover {
+  position: absolute;
+  bottom: 52px;
+  right: 0;
+  z-index: 100;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+  animation: ctxFadeIn 0.15s ease;
+}
+
+/* ── Voice player (in bubble) ── */
+.voice-player {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 200px;
+}
+
+.voice-play-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 184, 0, 0.25);
+  color: var(--chat-bubble-text);
+  cursor: pointer;
+  transition: 0.15s;
+  flex-shrink: 0;
+}
+
+.voice-play-btn:hover {
+  background: rgba(255, 184, 0, 0.4);
+}
+
+.voice-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+[data-theme="light"] .voice-track {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.voice-track-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #ffb000, #ff3d00);
+  transition: width 0.1s linear;
+}
+
+.voice-duration {
+  font-size: 12px;
+  opacity: 0.6;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 32px;
+  text-align: right;
+}
+
+/* ── Recording row ── */
+.recording-row {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.recording-indicator {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.recording-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff3d00;
+  animation: recPulse 1s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+@keyframes recPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.recording-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #ff3d00;
+}
+
+.recording-timer {
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--chat-bubble-text);
+  opacity: 0.7;
+}
+
+.recording-cancel {
+  border-color: rgba(255, 60, 60, 0.3) !important;
+  color: #ff5c5c !important;
+}
+
+.recording-cancel:hover {
+  background: rgba(255, 60, 60, 0.1) !important;
+  border-color: rgba(255, 60, 60, 0.5) !important;
 }
