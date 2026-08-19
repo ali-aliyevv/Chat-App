@@ -1,11 +1,14 @@
 require("dotenv").config();
 
+const path = require("path");
+const fs = require("fs");
 const express = require("express");
 const http = require("http");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const multer = require("multer");
 const { Server } = require("socket.io");
 const { randomUUID } = require("crypto");
 
@@ -65,6 +68,26 @@ app.use(
     credentials: true,
   })
 );
+
+const UPLOADS_DIR = path.join(__dirname, "uploads");
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+app.use("/uploads", express.static(UPLOADS_DIR));
+
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+
+const uploadStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).slice(0, 20);
+    cb(null, `${Date.now()}_${randomUUID().slice(0, 8)}${ext}`);
+  },
+});
+
+const upload = multer({
+  storage: uploadStorage,
+  limits: { fileSize: MAX_UPLOAD_BYTES },
+});
 
 function normalizeEmail(email) {
   return String(email || "").trim().toLowerCase();
@@ -150,6 +173,30 @@ function makeOtpCode() {
 }
 
 app.get("/health", (req, res) => res.json({ ok: true }));
+
+app.post("/api/upload", requireAuth, (req, res) => {
+  upload.single("file")(req, res, (err) => {
+    if (err) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return res.status(413).json({ message: "Fayl çox böyükdür (max 25MB)" });
+      }
+      return res.status(400).json({ message: "Fayl yüklənmədi" });
+    }
+
+    if (!req.file) return res.status(400).json({ message: "Fayl tapılmadı" });
+
+    const origin =
+      process.env.FRONTEND_API_ORIGIN ||
+      `${req.protocol}://${req.get("host")}`;
+
+    return res.json({
+      url: `${origin.replace(/\/$/, "")}/uploads/${req.file.filename}`,
+      name: req.file.originalname,
+      type: req.file.mimetype,
+      size: req.file.size,
+    });
+  });
+});
 
 app.post("/api/rooms/create", (req, res) => {
   const room = `room_${randomUUID().slice(0, 8)}`;
@@ -397,6 +444,8 @@ io.use((socket, next) => {
 });
 
 const roomUsers = new Map();
+const onlineSockets = new Map(); // username -> socket.id
+const activeCalls = new Map(); // username -> peerUsername
 
 function emitUsers(room) {
   const users = Array.from(roomUsers.get(room) || []);
@@ -413,6 +462,7 @@ io.on("connection", (socket) => {
 
     if (!roomUsers.has(r)) roomUsers.set(r, new Set());
     roomUsers.get(r).add(u);
+    onlineSockets.set(u, socket.id);
 
     const rawHistory = getRecentMessages(r, 50);
     const deletedForMe = getDeletedMessageIdsForUser(socket.user.id, r);
@@ -457,10 +507,21 @@ io.on("connection", (socket) => {
     emitUsers(r);
   });
 
-  socket.on("message:send", ({ room, text, clientId, replyTo }) => {
+  socket.on("message:send", ({ room, text, clientId, replyTo, attachment }) => {
     const r = String(room || socket.data.room || "general").trim() || "general";
     const t = String(text || "").trim();
-    if (!t) return;
+
+    let att = null;
+    if (attachment && attachment.url && attachment.name) {
+      att = {
+        url: String(attachment.url),
+        name: String(attachment.name),
+        type: attachment.type ? String(attachment.type) : "application/octet-stream",
+        size: typeof attachment.size === "number" ? attachment.size : null,
+      };
+    }
+
+    if (!t && !att) return;
 
     let replyToData = null;
     if (replyTo) {
@@ -487,9 +548,13 @@ io.on("connection", (socket) => {
       editedAt: null,
       deletedForAll: 0,
       readAt: null,
+      attachmentUrl: att?.url || null,
+      attachmentName: att?.name || null,
+      attachmentType: att?.type || null,
+      attachmentSize: att?.size ?? null,
     };
 
-    addMessage(msg);
+    addMessage({ ...msg, attachment: att });
     io.to(r).emit("message:new", msg);
     socket.emit("message:delivered", { clientId: msg.clientId, messageId: msg.id });
   });
@@ -551,10 +616,91 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("call:invite", ({ to, callType }) => {
+    const from = socket.user.username;
+    const target = String(to || "");
+    if (!target || target === from) return;
+
+    const targetSocketId = onlineSockets.get(target);
+    if (!targetSocketId) {
+      socket.emit("call:unavailable", { to: target });
+      return;
+    }
+
+    if (activeCalls.has(from) || activeCalls.has(target)) {
+      socket.emit("call:busy", { to: target });
+      return;
+    }
+
+    io.to(targetSocketId).emit("call:incoming", {
+      from,
+      callType: callType === "video" ? "video" : "audio",
+      room: socket.data.room,
+    });
+  });
+
+  socket.on("call:accept", ({ to }) => {
+    const from = socket.user.username;
+    const target = String(to || "");
+    const targetSocketId = onlineSockets.get(target);
+    if (!targetSocketId) return;
+
+    activeCalls.set(from, target);
+    activeCalls.set(target, from);
+
+    io.to(targetSocketId).emit("call:accepted", { from });
+  });
+
+  socket.on("call:reject", ({ to }) => {
+    const from = socket.user.username;
+    const targetSocketId = onlineSockets.get(String(to || ""));
+    if (targetSocketId) io.to(targetSocketId).emit("call:rejected", { from });
+  });
+
+  socket.on("call:offer", ({ to, offer }) => {
+    const targetSocketId = onlineSockets.get(String(to || ""));
+    if (targetSocketId) io.to(targetSocketId).emit("call:offer", { from: socket.user.username, offer });
+  });
+
+  socket.on("call:answer", ({ to, answer }) => {
+    const targetSocketId = onlineSockets.get(String(to || ""));
+    if (targetSocketId) io.to(targetSocketId).emit("call:answer", { from: socket.user.username, answer });
+  });
+
+  socket.on("call:ice-candidate", ({ to, candidate }) => {
+    const targetSocketId = onlineSockets.get(String(to || ""));
+    if (targetSocketId) io.to(targetSocketId).emit("call:ice-candidate", { from: socket.user.username, candidate });
+  });
+
+  socket.on("call:end", ({ to }) => {
+    const from = socket.user.username;
+    const target = String(to || "");
+
+    activeCalls.delete(from);
+    activeCalls.delete(target);
+
+    const targetSocketId = onlineSockets.get(target);
+    if (targetSocketId) io.to(targetSocketId).emit("call:ended", { from });
+  });
+
   socket.on("disconnect", () => {
     const r = socket.data.room;
     const u = socket.user?.username;
-    if (!r || !u) return;
+    if (!u) return;
+
+    if (onlineSockets.get(u) === socket.id) {
+      onlineSockets.delete(u);
+    }
+
+    const peer = activeCalls.get(u);
+    if (peer) {
+      activeCalls.delete(u);
+      activeCalls.delete(peer);
+      const peerSocketId = onlineSockets.get(peer);
+      if (peerSocketId) io.to(peerSocketId).emit("call:ended", { from: u, reason: "disconnect" });
+    }
+
+    if (!r) return;
 
     const set = roomUsers.get(r);
     if (set) {

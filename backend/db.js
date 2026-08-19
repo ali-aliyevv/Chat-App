@@ -51,7 +51,11 @@ db.exec(`
     edited_at INTEGER,
     deleted_for_all INTEGER NOT NULL DEFAULT 0,
     reply_to TEXT,
-    read_at INTEGER
+    read_at INTEGER,
+    attachment_url TEXT,
+    attachment_name TEXT,
+    attachment_type TEXT,
+    attachment_size INTEGER
   );
 
   CREATE INDEX IF NOT EXISTS idx_messages_room_time ON messages(room, created_at DESC);
@@ -94,6 +98,10 @@ try {
   ensureColumn("messages", "deleted_for_all", "INTEGER DEFAULT 0");
   ensureColumn("messages", "reply_to", "TEXT");
   ensureColumn("messages", "read_at", "INTEGER");
+  ensureColumn("messages", "attachment_url", "TEXT");
+  ensureColumn("messages", "attachment_name", "TEXT");
+  ensureColumn("messages", "attachment_type", "TEXT");
+  ensureColumn("messages", "attachment_size", "INTEGER");
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS deleted_messages (
@@ -182,15 +190,19 @@ const stmtDeleteOtp = db.prepare(`DELETE FROM otp_codes WHERE email = ?`);
 const stmtDeleteExpiredOtps = db.prepare(`DELETE FROM otp_codes WHERE expires_at < ?`);
 
 const stmtAddMessage = db.prepare(`
-  INSERT INTO messages (id, room, client_id, username, text, system, created_at, reply_to)
-  VALUES (@id, @room, @client_id, @username, @text, @system, @created_at, @reply_to)
+  INSERT INTO messages (id, room, client_id, username, text, system, created_at, reply_to,
+                         attachment_url, attachment_name, attachment_type, attachment_size)
+  VALUES (@id, @room, @client_id, @username, @text, @system, @created_at, @reply_to,
+          @attachment_url, @attachment_name, @attachment_type, @attachment_size)
 `);
 
 const stmtGetRecentMessages = db.prepare(`
   SELECT id, room, client_id as clientId, username, text, system,
          created_at as createdAt, edited_at as editedAt,
          deleted_for_all as deletedForAll, reply_to as replyTo,
-         read_at as readAt
+         read_at as readAt,
+         attachment_url as attachmentUrl, attachment_name as attachmentName,
+         attachment_type as attachmentType, attachment_size as attachmentSize
   FROM messages
   WHERE room = ?
   ORDER BY created_at DESC
@@ -201,7 +213,9 @@ const stmtGetMessageById = db.prepare(`
   SELECT id, room, client_id as clientId, username, text, system,
          created_at as createdAt, edited_at as editedAt,
          deleted_for_all as deletedForAll, reply_to as replyTo,
-         read_at as readAt
+         read_at as readAt,
+         attachment_url as attachmentUrl, attachment_name as attachmentName,
+         attachment_type as attachmentType, attachment_size as attachmentSize
   FROM messages WHERE id = ?
 `);
 
@@ -209,7 +223,9 @@ const stmtGetMessageByClientId = db.prepare(`
   SELECT id, room, client_id as clientId, username, text, system,
          created_at as createdAt, edited_at as editedAt,
          deleted_for_all as deletedForAll, reply_to as replyTo,
-         read_at as readAt
+         read_at as readAt,
+         attachment_url as attachmentUrl, attachment_name as attachmentName,
+         attachment_type as attachmentType, attachment_size as attachmentSize
   FROM messages WHERE client_id = ?
 `);
 
@@ -310,16 +326,20 @@ function deleteExpiredOtps() {
   stmtDeleteExpiredOtps.run(Date.now());
 }
 
-function addMessage({ id, room, clientId, username, text, system, createdAt, replyTo }) {
+function addMessage({ id, room, clientId, username, text, system, createdAt, replyTo, attachment }) {
   stmtAddMessage.run({
     id: String(id),
     room: String(room),
     client_id: clientId ? String(clientId) : null,
     username: username ?? null,
-    text: String(text),
+    text: String(text ?? ""),
     system: system ? 1 : 0,
     created_at: typeof createdAt === "number" ? createdAt : Date.now(),
     reply_to: replyTo ? String(replyTo) : null,
+    attachment_url: attachment?.url ? String(attachment.url) : null,
+    attachment_name: attachment?.name ? String(attachment.name) : null,
+    attachment_type: attachment?.type ? String(attachment.type) : null,
+    attachment_size: typeof attachment?.size === "number" ? attachment.size : null,
   });
 }
 

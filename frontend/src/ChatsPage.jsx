@@ -3,7 +3,9 @@ import PropTypes from "prop-types";
 import { socket } from "./socket";
 import { api } from "./api";
 import { useLanguage } from "./context/LanguageContext";
+import { useCall } from "./hooks/useCall";
 import SettingsBar from "./components/SettingsBar";
+import CallModal from "./components/CallModal";
 import "./style/ChatsPage.css";
 
 
@@ -53,6 +55,41 @@ function truncate(str, len = 50) {
   return str.length > len ? str.slice(0, len) + "..." : str;
 }
 
+function formatFileSize(bytes) {
+  if (bytes === null || bytes === undefined || Number.isNaN(bytes)) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+
+const AttachIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+  </svg>
+);
+
+const CallAudioIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.02-.24c1.12.37 2.33.57 3.57.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1C10.61 21 3 13.39 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.24.2 2.45.57 3.57a1 1 0 0 1-.24 1.02l-2.21 2.2z" />
+  </svg>
+);
+
+const CallVideoIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="23 7 16 12 23 17 23 7" />
+    <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+  </svg>
+);
+
+const DocIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+  </svg>
+);
+
 
 const ChatsPage = ({ user, onLogout }) => {
   const { t } = useLanguage();
@@ -67,13 +104,19 @@ const ChatsPage = ({ user, onLogout }) => {
 
   const [contextMenu, setContextMenu] = useState(null);
 
-  const [editingMessage, setEditingMessage] = useState(null); 
+  const [editingMessage, setEditingMessage] = useState(null);
 
   const [replyingTo, setReplyingTo] = useState(null);
+
+  const [uploadError, setUploadError] = useState(null);
+  const [callErrorMsg, setCallErrorMsg] = useState(null);
+
+  const call = useCall();
 
   const messagesBoxRef = useRef(null);
   const shouldAutoScrollRef = useRef(true);
   const inputRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const refreshTriedRef = useRef(false);
   const didLogoutRef = useRef(false);
@@ -124,6 +167,37 @@ const ChatsPage = ({ user, onLogout }) => {
 
     if (shouldAutoScrollRef.current) emitReadUpTo();
   }, [emitReadUpTo]);
+
+  useEffect(() => {
+    if (!call.callState.error) return;
+    setCallErrorMsg(t(call.callState.error));
+    call.clearError();
+    const timer = setTimeout(() => setCallErrorMsg(null), 4000);
+    return () => clearTimeout(timer);
+  }, [call, call.callState.error, t]);
+
+  const otherOnlineUser = useMemo(
+    () => onlineUsers.find((u) => u !== me) || null,
+    [onlineUsers, me]
+  );
+
+  const handleAudioCall = useCallback(() => {
+    if (!otherOnlineUser) {
+      setCallErrorMsg(t("noOneToCall"));
+      setTimeout(() => setCallErrorMsg(null), 4000);
+      return;
+    }
+    call.startCall(otherOnlineUser, "audio");
+  }, [call, otherOnlineUser, t]);
+
+  const handleVideoCall = useCallback(() => {
+    if (!otherOnlineUser) {
+      setCallErrorMsg(t("noOneToCall"));
+      setTimeout(() => setCallErrorMsg(null), 4000);
+      return;
+    }
+    call.startCall(otherOnlineUser, "video");
+  }, [call, otherOnlineUser, t]);
 
   useEffect(() => {
     const close = () => setContextMenu(null);
@@ -489,6 +563,87 @@ const ChatsPage = ({ user, onLogout }) => {
     requestAnimationFrame(() => scrollToBottom("smooth"));
   };
 
+  const handleAttachClick = useCallback(() => {
+    if (editingMessage) return;
+    fileInputRef.current?.click();
+  }, [editingMessage]);
+
+  const handleFileChange = useCallback(
+    async (e) => {
+      const file = e.target.files?.[0];
+      e.target.value = "";
+      if (!file) return;
+
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        setUploadError(t("fileTooLarge"));
+        setTimeout(() => setUploadError(null), 4000);
+        return;
+      }
+
+      shouldAutoScrollRef.current = true;
+
+      const tmpId = `tmp_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      const nowIso = new Date().toISOString();
+      const isImage = file.type.startsWith("image/");
+      const localPreviewUrl = isImage ? URL.createObjectURL(file) : null;
+      const caption = text.trim();
+      const replyToId = replyingTo?.id || null;
+
+      const optimistic = {
+        id: tmpId,
+        room,
+        clientId: tmpId,
+        username: me,
+        text: caption,
+        system: false,
+        createdAt: nowIso,
+        status: "uploading",
+        replyTo: replyToId,
+        replyToData: replyingTo
+          ? { id: replyingTo.id, username: replyingTo.username, text: truncate(replyingTo.text, 80) }
+          : null,
+        editedAt: null,
+        deletedForAll: 0,
+        attachmentUrl: localPreviewUrl,
+        attachmentName: file.name,
+        attachmentType: file.type || "application/octet-stream",
+        attachmentSize: file.size,
+      };
+
+      setMessages((prev) => mergeMessages(prev, [optimistic]));
+      setText("");
+      setReplyingTo(null);
+      socket.emit("typing", { room, isTyping: false });
+      requestAnimationFrame(() => scrollToBottom("smooth"));
+
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await api.post("/api/upload", formData);
+        const { url, name, type, size } = res.data;
+
+        setMessages((prev) =>
+          prev.map((m) => (String(m.id) === tmpId ? { ...m, status: "sending", attachmentUrl: url } : m))
+        );
+
+        socket.emit("message:send", {
+          room,
+          text: caption,
+          clientId: tmpId,
+          replyTo: replyToId,
+          attachment: { url, name, type, size },
+        });
+      } catch {
+        setMessages((prev) => prev.filter((m) => String(m.id) !== tmpId));
+        setUploadError(t("uploadFailed"));
+        setTimeout(() => setUploadError(null), 4000);
+      } finally {
+        if (localPreviewUrl) URL.revokeObjectURL(localPreviewUrl);
+      }
+    },
+    [me, replyingTo, room, scrollToBottom, t, text]
+  );
+
   const labelForDayKey = useCallback((dayKey) => {
     if (dayKey === "unknown") return "";
     const [y, m, d] = dayKey.split("-").map(Number);
@@ -551,12 +706,30 @@ const ChatsPage = ({ user, onLogout }) => {
           </div>
 
           <div className="chat-top-actions">
+            <button
+              className="chat-call-btn"
+              onClick={handleAudioCall}
+              disabled={call.callState.status !== "idle"}
+              title={t("audioCall")}
+            >
+              <CallAudioIcon />
+            </button>
+            <button
+              className="chat-call-btn"
+              onClick={handleVideoCall}
+              disabled={call.callState.status !== "idle"}
+              title={t("videoCall")}
+            >
+              <CallVideoIcon />
+            </button>
             <SettingsBar />
             <button className="chat-logout" onClick={onLogout}>
               {t("logout")}
             </button>
           </div>
         </div>
+
+        {callErrorMsg ? <div className="call-toast-banner">{callErrorMsg}</div> : null}
 
         <div className="chat-body">
           <aside className="chat-users">
@@ -614,7 +787,43 @@ const ChatsPage = ({ user, onLogout }) => {
                     {isDeleted ? (
                       <span className="msg-deleted-text">{t("messageDeleted")}</span>
                     ) : (
-                      <span>{m.text}</span>
+                      <>
+                        {m.attachmentUrl ? (
+                          m.attachmentType?.startsWith("image/") ? (
+                            <a
+                              href={m.attachmentUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="msg-attachment-image-link"
+                              onClick={(e) => m.status === "uploading" && e.preventDefault()}
+                            >
+                              <img src={m.attachmentUrl} alt={m.attachmentName || "image"} className="msg-attachment-image" />
+                            </a>
+                          ) : (
+                            <a
+                              href={m.attachmentUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="msg-attachment-doc"
+                              onClick={(e) => m.status === "uploading" && e.preventDefault()}
+                            >
+                              <span className="msg-attachment-doc-icon"><DocIcon /></span>
+                              <span className="msg-attachment-doc-info">
+                                <span className="msg-attachment-doc-name">{m.attachmentName}</span>
+                                <span className="msg-attachment-doc-size">{formatFileSize(m.attachmentSize)}</span>
+                              </span>
+                            </a>
+                          )
+                        ) : null}
+
+                        {m.status === "uploading" ? (
+                          <span className="msg-attachment-uploading">{t("uploading")}</span>
+                        ) : null}
+
+                        {m.text ? (
+                          <span className={m.attachmentUrl ? "msg-attachment-caption" : undefined}>{m.text}</span>
+                        ) : null}
+                      </>
                     )}
 
                     {m.editedAt && !isDeleted ? (
@@ -657,7 +866,28 @@ const ChatsPage = ({ user, onLogout }) => {
           </div>
         ) : null}
 
+        {uploadError ? (
+          <div className="upload-error-banner">{uploadError}</div>
+        ) : null}
+
         <div className="chat-inputRow">
+          <input
+            ref={fileInputRef}
+            type="file"
+            onChange={handleFileChange}
+            style={{ display: "none" }}
+          />
+
+          <button
+            type="button"
+            className="chat-attach"
+            onClick={handleAttachClick}
+            disabled={!!editingMessage}
+            title={t("attach")}
+          >
+            <AttachIcon />
+          </button>
+
           <input
             ref={inputRef}
             className="chat-input"
@@ -717,6 +947,19 @@ const ChatsPage = ({ user, onLogout }) => {
           ) : null}
         </div>
       ) : null}
+
+      <CallModal
+        callState={call.callState}
+        localStream={call.localStream}
+        remoteStream={call.remoteStream}
+        muted={call.muted}
+        cameraOff={call.cameraOff}
+        onAccept={call.acceptCall}
+        onReject={call.rejectCall}
+        onEnd={call.endCall}
+        onToggleMute={call.toggleMute}
+        onToggleCamera={call.toggleCamera}
+      />
     </div>
   );
 };
