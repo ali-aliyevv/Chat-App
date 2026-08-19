@@ -10,10 +10,10 @@ import SettingsBar from "./components/SettingsBar";
 import CallModal from "./components/CallModal";
 import "./style/ChatsPage.css";
 
-
 function formatTime(createdAt) {
   if (!createdAt) return "";
-  const d = typeof createdAt === "number" ? new Date(createdAt) : new Date(createdAt);
+  const d =
+    typeof createdAt === "number" ? new Date(createdAt) : new Date(createdAt);
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
@@ -25,7 +25,8 @@ function formatDuration(sec) {
 }
 
 function toDayKey(createdAt) {
-  const d = typeof createdAt === "number" ? new Date(createdAt) : new Date(createdAt);
+  const d =
+    typeof createdAt === "number" ? new Date(createdAt) : new Date(createdAt);
   if (Number.isNaN(d.getTime())) return "unknown";
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -42,8 +43,14 @@ function mergeMessages(prev, incoming) {
   });
 
   return Array.from(map.values()).sort((a, b) => {
-    const ta = typeof a.createdAt === "number" ? a.createdAt : Date.parse(a.createdAt || 0);
-    const tb = typeof b.createdAt === "number" ? b.createdAt : Date.parse(b.createdAt || 0);
+    const ta =
+      typeof a.createdAt === "number"
+        ? a.createdAt
+        : Date.parse(a.createdAt || 0);
+    const tb =
+      typeof b.createdAt === "number"
+        ? b.createdAt
+        : Date.parse(b.createdAt || 0);
     return (ta || 0) - (tb || 0);
   });
 }
@@ -73,7 +80,16 @@ function formatFileSize(bytes) {
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
 const AttachIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
     <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
   </svg>
 );
@@ -85,19 +101,36 @@ const CallAudioIcon = () => (
 );
 
 const CallVideoIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
     <polygon points="23 7 16 12 23 17 23 7" />
     <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
   </svg>
 );
 
 const DocIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg
+    width="22"
+    height="22"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
     <polyline points="14 2 14 8 20 8" />
   </svg>
 );
-
 
 /* ── Voice player sub-component ── */
 function VoicePlayer({ src }) {
@@ -109,7 +142,11 @@ function VoicePlayer({ src }) {
   const toggle = () => {
     const a = audioRef.current;
     if (!a) return;
-    if (playing) { a.pause(); } else { a.play(); }
+    if (playing) {
+      a.pause();
+    } else {
+      a.play();
+    }
   };
 
   return (
@@ -125,23 +162,39 @@ function VoicePlayer({ src }) {
         }}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
-        onEnded={() => { setPlaying(false); setProgress(0); }}
+        onEnded={() => {
+          setPlaying(false);
+          setProgress(0);
+        }}
       />
-      <button className="voice-play-btn" onClick={toggle} type="button" aria-label={playing ? "Pause" : "Play"}>
+      <button
+        className="voice-play-btn"
+        onClick={toggle}
+        type="button"
+        aria-label={playing ? "Pause" : "Play"}
+      >
         {playing ? (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <rect x="6" y="4" width="4" height="16" rx="1" />
+            <rect x="14" y="4" width="4" height="16" rx="1" />
+          </svg>
         ) : (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="5,3 19,12 5,21" />
+          </svg>
         )}
       </button>
-      <div className="voice-track" onClick={(e) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        const pct = (e.clientX - rect.left) / rect.width;
-        if (audioRef.current && audioRef.current.duration) {
-          audioRef.current.currentTime = pct * audioRef.current.duration;
-          setProgress(pct * 100);
-        }
-      }}>
+      <div
+        className="voice-track"
+        onClick={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const pct = (e.clientX - rect.left) / rect.width;
+          if (audioRef.current && audioRef.current.duration) {
+            audioRef.current.currentTime = pct * audioRef.current.duration;
+            setProgress(pct * 100);
+          }
+        }}
+      >
         <div className="voice-track-fill" style={{ width: `${progress}%` }} />
       </div>
       <span className="voice-duration">{formatDuration(duration)}</span>
@@ -150,7 +203,6 @@ function VoicePlayer({ src }) {
 }
 
 VoicePlayer.propTypes = { src: PropTypes.string.isRequired };
-
 
 const ChatsPage = ({ user, onLogout }) => {
   const { t } = useLanguage();
@@ -204,7 +256,10 @@ const ChatsPage = ({ user, onLogout }) => {
   /* ── Close emoji picker on outside click ── */
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target)) {
+      if (
+        emojiPickerRef.current &&
+        !emojiPickerRef.current.contains(e.target)
+      ) {
         setShowEmojiPicker(false);
       }
     };
@@ -218,7 +273,9 @@ const ChatsPage = ({ user, onLogout }) => {
 
     if (!id.startsWith("tmp_")) return id;
 
-    const found = messagesStateRef.current.find((m) => String(m.clientId) === id);
+    const found = messagesStateRef.current.find(
+      (m) => String(m.clientId) === id,
+    );
     if (!found) return id;
 
     return String(found.id || id);
@@ -245,7 +302,8 @@ const ChatsPage = ({ user, onLogout }) => {
     const el = messagesBoxRef.current;
     if (!el) return;
 
-    const distanceFromBottom = el.scrollHeight - (el.scrollTop + el.clientHeight);
+    const distanceFromBottom =
+      el.scrollHeight - (el.scrollTop + el.clientHeight);
     shouldAutoScrollRef.current = distanceFromBottom < 120;
 
     if (shouldAutoScrollRef.current) emitReadUpTo();
@@ -261,7 +319,7 @@ const ChatsPage = ({ user, onLogout }) => {
 
   const otherOnlineUser = useMemo(
     () => onlineUsers.find((u) => u !== me) || null,
-    [onlineUsers, me]
+    [onlineUsers, me],
   );
 
   const handleAudioCall = useCallback(() => {
@@ -349,7 +407,9 @@ const ChatsPage = ({ user, onLogout }) => {
           if (idx !== -1) {
             const copy = [...prev];
 
-            const alreadyHasServer = prev.some((m) => String(m.id) === String(msg.id));
+            const alreadyHasServer = prev.some(
+              (m) => String(m.id) === String(msg.id),
+            );
             if (alreadyHasServer) {
               copy.splice(idx, 1);
               return mergeMessages(copy, []);
@@ -403,7 +463,12 @@ const ChatsPage = ({ user, onLogout }) => {
 
         return prev.map((m) => {
           if (cid && String(m.id) === cid) {
-            return { ...m, id: mid || m.id, status: "delivered", clientId: cid };
+            return {
+              ...m,
+              id: mid || m.id,
+              status: "delivered",
+              clientId: cid,
+            };
           }
           if (!cid && mid && String(m.id) === mid) {
             return { ...m, status: "delivered" };
@@ -422,14 +487,18 @@ const ChatsPage = ({ user, onLogout }) => {
           if (m.system) return m;
           if (m.username !== me) return m;
 
-          const mt = typeof m.createdAt === "number" ? m.createdAt : Date.parse(m.createdAt || 0);
-          const rt = typeof readUpTo === "number" ? readUpTo : Date.parse(readUpTo || 0);
+          const mt =
+            typeof m.createdAt === "number"
+              ? m.createdAt
+              : Date.parse(m.createdAt || 0);
+          const rt =
+            typeof readUpTo === "number" ? readUpTo : Date.parse(readUpTo || 0);
 
           if ((mt || 0) <= (rt || 0)) {
             return { ...m, status: "seen", readAt: readAt || Date.now() };
           }
           return m;
-        })
+        }),
       );
     };
 
@@ -441,7 +510,7 @@ const ChatsPage = ({ user, onLogout }) => {
           if (String(m.id) === String(messageId)) {
             return { ...m, text: newText, editedAt };
           }
-          /* FIX: Also update any message that has a replyToData pointing to the edited message */
+          /* Also update any message that has a replyToData pointing to the edited message */
           if (m.replyToData && String(m.replyToData.id) === String(messageId)) {
             return {
               ...m,
@@ -449,7 +518,7 @@ const ChatsPage = ({ user, onLogout }) => {
             };
           }
           return m;
-        })
+        }),
       );
     };
 
@@ -457,14 +526,16 @@ const ChatsPage = ({ user, onLogout }) => {
       if (!mounted) return;
 
       if (deletedFor === "me") {
-        setMessages((prev) => prev.filter((m) => String(m.id) !== String(messageId)));
+        setMessages((prev) =>
+          prev.filter((m) => String(m.id) !== String(messageId)),
+        );
       } else {
         setMessages((prev) =>
           prev.map((m) =>
             String(m.id) === String(messageId)
               ? { ...m, text: "", deletedForAll: 1, replyToData: null }
-              : m
-          )
+              : m,
+          ),
         );
       }
     };
@@ -550,19 +621,16 @@ const ChatsPage = ({ user, onLogout }) => {
     }
   }, [messages.length, scrollToBottom]);
 
-  const handleContextMenu = useCallback(
-    (e, msg) => {
-      if (msg.system) return;
-      if (msg.deletedForAll) return;
+  const handleContextMenu = useCallback((e, msg) => {
+    if (msg.system) return;
+    if (msg.deletedForAll) return;
 
-      if (String(msg.id || "").startsWith("tmp_")) return;
-      if (msg.status === "sending") return;
+    if (String(msg.id || "").startsWith("tmp_")) return;
+    if (msg.status === "sending") return;
 
-      e.preventDefault();
-      setContextMenu({ x: e.clientX, y: e.clientY, message: msg });
-    },
-    []
-  );
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, message: msg });
+  }, []);
 
   const handleReply = useCallback(() => {
     if (!contextMenu?.message) return;
@@ -616,7 +684,9 @@ const ChatsPage = ({ user, onLogout }) => {
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
+      const recorder = new MediaRecorder(stream, {
+        mimeType: "audio/webm;codecs=opus",
+      });
       audioChunksRef.current = [];
 
       recorder.ondataavailable = (e) => {
@@ -643,7 +713,10 @@ const ChatsPage = ({ user, onLogout }) => {
   const stopRecording = useCallback(() => {
     return new Promise((resolve) => {
       const recorder = mediaRecorderRef.current;
-      if (!recorder || recorder.state === "inactive") { resolve(null); return; }
+      if (!recorder || recorder.state === "inactive") {
+        resolve(null);
+        return;
+      }
 
       recorder.onstop = () => {
         recorder.stream?.getTracks().forEach((t) => t.stop());
@@ -694,7 +767,11 @@ const ChatsPage = ({ user, onLogout }) => {
         status: "sending",
         replyTo: replyingTo?.id || null,
         replyToData: replyingTo
-          ? { id: replyingTo.id, username: replyingTo.username, text: truncate(replyingTo.text, 80) }
+          ? {
+              id: replyingTo.id,
+              username: replyingTo.username,
+              text: truncate(replyingTo.text, 80),
+            }
           : null,
         editedAt: null,
         deletedForAll: 0,
@@ -747,7 +824,11 @@ const ChatsPage = ({ user, onLogout }) => {
       status: "sending",
       replyTo: replyingTo?.id || null,
       replyToData: replyingTo
-        ? { id: replyingTo.id, username: replyingTo.username, text: truncate(replyingTo.text, 80) }
+        ? {
+            id: replyingTo.id,
+            username: replyingTo.username,
+            text: truncate(replyingTo.text, 80),
+          }
         : null,
       editedAt: null,
       deletedForAll: 0,
@@ -808,7 +889,11 @@ const ChatsPage = ({ user, onLogout }) => {
         status: "uploading",
         replyTo: replyToId,
         replyToData: replyingTo
-          ? { id: replyingTo.id, username: replyingTo.username, text: truncate(replyingTo.text, 80) }
+          ? {
+              id: replyingTo.id,
+              username: replyingTo.username,
+              text: truncate(replyingTo.text, 80),
+            }
           : null,
         editedAt: null,
         deletedForAll: 0,
@@ -831,7 +916,11 @@ const ChatsPage = ({ user, onLogout }) => {
         const { url, name, type, size } = res.data;
 
         setMessages((prev) =>
-          prev.map((m) => (String(m.id) === tmpId ? { ...m, status: "sending", attachmentUrl: url } : m))
+          prev.map((m) =>
+            String(m.id) === tmpId
+              ? { ...m, status: "sending", attachmentUrl: url }
+              : m,
+          ),
         );
 
         socket.emit("message:send", {
@@ -849,24 +938,31 @@ const ChatsPage = ({ user, onLogout }) => {
         if (localPreviewUrl) URL.revokeObjectURL(localPreviewUrl);
       }
     },
-    [me, replyingTo, room, scrollToBottom, t, text]
+    [me, replyingTo, room, scrollToBottom, t, text],
   );
 
-  const labelForDayKey = useCallback((dayKey) => {
-    if (dayKey === "unknown") return "";
-    const [y, m, d] = dayKey.split("-").map(Number);
-    const date = new Date(y, m - 1, d);
+  const labelForDayKey = useCallback(
+    (dayKey) => {
+      if (dayKey === "unknown") return "";
+      const [y, m, d] = dayKey.split("-").map(Number);
+      const date = new Date(y, m - 1, d);
 
-    const now = new Date();
-    const todayKey = toDayKey(now);
-    const yesterday = new Date(now);
-    yesterday.setDate(now.getDate() - 1);
-    const yesterdayKey = toDayKey(yesterday);
+      const now = new Date();
+      const todayKey = toDayKey(now);
+      const yesterday = new Date(now);
+      yesterday.setDate(now.getDate() - 1);
+      const yesterdayKey = toDayKey(yesterday);
 
-    if (dayKey === todayKey) return t("today");
-    if (dayKey === yesterdayKey) return t("yesterday");
-    return date.toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" });
-  }, [t]);
+      if (dayKey === todayKey) return t("today");
+      if (dayKey === yesterdayKey) return t("yesterday");
+      return date.toLocaleDateString([], {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+    },
+    [t],
+  );
 
   const items = useMemo(() => {
     const out = [];
@@ -889,11 +985,16 @@ const ChatsPage = ({ user, onLogout }) => {
     if (m.username !== me) return null;
 
     const s = m.status || "delivered";
-    if (s === "sending") return <span className="msg-status sending">{t("sendingStatus")}</span>;
-    if (s === "delivered") return <span className="msg-status delivered">&#10003;</span>;
+    if (s === "sending")
+      return <span className="msg-status sending">{t("sendingStatus")}</span>;
+    if (s === "delivered")
+      return <span className="msg-status delivered">&#10003;</span>;
     if (s === "seen") {
       return (
-        <span className="msg-status seen" title={m.readAt ? `${t("read")}: ${formatTime(m.readAt)}` : t("read")}>
+        <span
+          className="msg-status seen"
+          title={m.readAt ? `${t("read")}: ${formatTime(m.readAt)}` : t("read")}
+        >
           &#10003;&#10003;
         </span>
       );
@@ -908,8 +1009,13 @@ const ChatsPage = ({ user, onLogout }) => {
           <div>
             <div className="chat-title">{"Room: #" + room}</div>
             <div className="chat-subtitle">
-              {t("loggedInAs")}<b>{me}</b>
-              {typingUser ? <span className="typing">{" · " + typingUser + t("isTyping")}</span> : null}
+              {t("loggedInAs")}
+              <b>{me}</b>
+              {typingUser ? (
+                <span className="typing">
+                  {" · " + typingUser + t("isTyping")}
+                </span>
+              ) : null}
             </div>
           </div>
 
@@ -937,7 +1043,9 @@ const ChatsPage = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {callErrorMsg ? <div className="call-toast-banner">{callErrorMsg}</div> : null}
+        {callErrorMsg ? (
+          <div className="call-toast-banner">{callErrorMsg}</div>
+        ) : null}
 
         <div className="chat-body">
           <aside className="chat-users">
@@ -952,7 +1060,11 @@ const ChatsPage = ({ user, onLogout }) => {
             </div>
           </aside>
 
-          <section className="chat-messages" ref={messagesBoxRef} onScroll={handleMessagesScroll}>
+          <section
+            className="chat-messages"
+            ref={messagesBoxRef}
+            onScroll={handleMessagesScroll}
+          >
             {items.map((it) => {
               if (it.type === "day") {
                 return (
@@ -977,24 +1089,38 @@ const ChatsPage = ({ user, onLogout }) => {
                   {!m.system ? (
                     <div className="msg-user">
                       <span>{m.username}</span>
-                      {time ? <span style={{ opacity: 0.65, marginLeft: 8, fontSize: 12 }}>{time}</span> : null}
+                      {time ? (
+                        <span
+                          style={{ opacity: 0.65, marginLeft: 8, fontSize: 12 }}
+                        >
+                          {time}
+                        </span>
+                      ) : null}
                     </div>
                   ) : time ? (
                     <div className="msg-user" style={{ textAlign: "center" }}>
-                      <span style={{ opacity: 0.65, fontSize: 12 }}>{time}</span>
+                      <span style={{ opacity: 0.65, fontSize: 12 }}>
+                        {time}
+                      </span>
                     </div>
                   ) : null}
 
                   <div className={`msg-bubble ${isDeleted ? "deleted" : ""}`}>
                     {m.replyToData && !isDeleted ? (
                       <div className="msg-reply-preview">
-                        <span className="msg-reply-username">{m.replyToData.username}</span>
-                        <span className="msg-reply-text">{truncate(m.replyToData.text, 50)}</span>
+                        <span className="msg-reply-username">
+                          {m.replyToData.username}
+                        </span>
+                        <span className="msg-reply-text">
+                          {truncate(m.replyToData.text, 50)}
+                        </span>
                       </div>
                     ) : null}
 
                     {isDeleted ? (
-                      <span className="msg-deleted-text">{t("messageDeleted")}</span>
+                      <span className="msg-deleted-text">
+                        {t("messageDeleted")}
+                      </span>
                     ) : isVoice ? (
                       <VoicePlayer src={m.voiceUrl} />
                     ) : (
@@ -1006,9 +1132,15 @@ const ChatsPage = ({ user, onLogout }) => {
                               target="_blank"
                               rel="noreferrer"
                               className="msg-attachment-image-link"
-                              onClick={(e) => m.status === "uploading" && e.preventDefault()}
+                              onClick={(e) =>
+                                m.status === "uploading" && e.preventDefault()
+                              }
                             >
-                              <img src={m.attachmentUrl} alt={m.attachmentName || "image"} className="msg-attachment-image" />
+                              <img
+                                src={m.attachmentUrl}
+                                alt={m.attachmentName || "image"}
+                                className="msg-attachment-image"
+                              />
                             </a>
                           ) : (
                             <a
@@ -1016,23 +1148,41 @@ const ChatsPage = ({ user, onLogout }) => {
                               target="_blank"
                               rel="noreferrer"
                               className="msg-attachment-doc"
-                              onClick={(e) => m.status === "uploading" && e.preventDefault()}
+                              onClick={(e) =>
+                                m.status === "uploading" && e.preventDefault()
+                              }
                             >
-                              <span className="msg-attachment-doc-icon"><DocIcon /></span>
+                              <span className="msg-attachment-doc-icon">
+                                <DocIcon />
+                              </span>
                               <span className="msg-attachment-doc-info">
-                                <span className="msg-attachment-doc-name">{m.attachmentName}</span>
-                                <span className="msg-attachment-doc-size">{formatFileSize(m.attachmentSize)}</span>
+                                <span className="msg-attachment-doc-name">
+                                  {m.attachmentName}
+                                </span>
+                                <span className="msg-attachment-doc-size">
+                                  {formatFileSize(m.attachmentSize)}
+                                </span>
                               </span>
                             </a>
                           )
                         ) : null}
 
                         {m.status === "uploading" ? (
-                          <span className="msg-attachment-uploading">{t("uploading")}</span>
+                          <span className="msg-attachment-uploading">
+                            {t("uploading")}
+                          </span>
                         ) : null}
 
                         {m.text ? (
-                          <span className={m.attachmentUrl ? "msg-attachment-caption" : undefined}>{m.text}</span>
+                          <span
+                            className={
+                              m.attachmentUrl
+                                ? "msg-attachment-caption"
+                                : undefined
+                            }
+                          >
+                            {m.text}
+                          </span>
                         ) : null}
                       </>
                     )}
@@ -1045,7 +1195,9 @@ const ChatsPage = ({ user, onLogout }) => {
                       <div className="msg-statusWrap">
                         {renderStatus(m)}
                         {m.status === "seen" && m.readAt ? (
-                          <span className="msg-read-time">{formatTime(m.readAt)}</span>
+                          <span className="msg-read-time">
+                            {formatTime(m.readAt)}
+                          </span>
                         ) : null}
                       </div>
                     ) : null}
@@ -1060,10 +1212,16 @@ const ChatsPage = ({ user, onLogout }) => {
           <div className="reply-banner">
             <div className="reply-banner-bar" />
             <div className="reply-banner-content">
-              <span className="reply-banner-username">{replyingTo.username}</span>
-              <span className="reply-banner-text">{truncate(replyingTo.text, 60)}</span>
+              <span className="reply-banner-username">
+                {replyingTo.username}
+              </span>
+              <span className="reply-banner-text">
+                {truncate(replyingTo.text, 60)}
+              </span>
             </div>
-            <button className="reply-banner-close" onClick={cancelReply}>&#10005;</button>
+            <button className="reply-banner-close" onClick={cancelReply}>
+              &#10005;
+            </button>
           </div>
         ) : null}
 
@@ -1073,7 +1231,9 @@ const ChatsPage = ({ user, onLogout }) => {
             <div className="edit-banner-content">
               <span className="edit-banner-label">{t("editMessage")}</span>
             </div>
-            <button className="edit-banner-close" onClick={cancelEdit}>&#10005;</button>
+            <button className="edit-banner-close" onClick={cancelEdit}>
+              &#10005;
+            </button>
           </div>
         ) : null}
 
@@ -1099,40 +1259,55 @@ const ChatsPage = ({ user, onLogout }) => {
             <AttachIcon />
           </button>
 
-          <input
-            ref={inputRef}
-            className="chat-input"
-            value={text}
-            onChange={(e) => {
-              const v = e.target.value;
-              setText(v);
-              if (!editingMessage) {
-                socket.emit("typing", { room, isTyping: v.trim().length > 0 });
-              }
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") send();
-              if (e.key === "Escape") {
-                if (editingMessage) cancelEdit();
-                if (replyingTo) cancelReply();
-              }
-            }}
-            placeholder={editingMessage ? t("editMessagePlaceholder") : t("writeMessage")}
-            autoComplete="off"
-          />
           {isRecording ? (
             /* ── Recording UI ── */
             <div className="recording-row">
               <div className="recording-indicator">
                 <span className="recording-dot" />
                 <span className="recording-label">{t("recording")}</span>
-                <span className="recording-timer">{formatDuration(recordingTime)}</span>
+                <span className="recording-timer">
+                  {formatDuration(recordingTime)}
+                </span>
               </div>
-              <button className="chat-icon-btn recording-cancel" onClick={cancelRecording} type="button" aria-label="Cancel recording">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              <button
+                className="chat-icon-btn recording-cancel"
+                onClick={cancelRecording}
+                type="button"
+                aria-label="Cancel recording"
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
               </button>
-              <button className="chat-send" onClick={sendVoice} type="button" aria-label="Send voice">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              <button
+                className="chat-send"
+                onClick={sendVoice}
+                type="button"
+                aria-label="Send voice"
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="22" y1="2" x2="11" y2="13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                </svg>
               </button>
             </div>
           ) : (
@@ -1146,7 +1321,10 @@ const ChatsPage = ({ user, onLogout }) => {
                   const v = e.target.value;
                   setText(v);
                   if (!editingMessage) {
-                    socket.emit("typing", { room, isTyping: v.trim().length > 0 });
+                    socket.emit("typing", {
+                      room,
+                      isTyping: v.trim().length > 0,
+                    });
                   }
                 }}
                 onKeyDown={(e) => {
@@ -1156,18 +1334,36 @@ const ChatsPage = ({ user, onLogout }) => {
                     if (replyingTo) cancelReply();
                   }
                 }}
-                placeholder={editingMessage ? t("editMessagePlaceholder") : t("writeMessage")}
+                placeholder={
+                  editingMessage
+                    ? t("editMessagePlaceholder")
+                    : t("writeMessage")
+                }
                 autoComplete="off"
               />
 
               {/* Voice record button (only when no text) */}
               {!text.trim() && !editingMessage ? (
-                <button className="chat-icon-btn" onClick={startRecording} type="button" aria-label="Record voice">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                    <line x1="12" y1="19" x2="12" y2="23"/>
-                    <line x1="8" y1="23" x2="16" y2="23"/>
+                <button
+                  className="chat-icon-btn"
+                  onClick={startRecording}
+                  type="button"
+                  aria-label="Record voice"
+                >
+                  <svg
+                    width="22"
+                    height="22"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                    <line x1="12" y1="19" x2="12" y2="23" />
+                    <line x1="8" y1="23" x2="16" y2="23" />
                   </svg>
                 </button>
               ) : null}
@@ -1180,11 +1376,20 @@ const ChatsPage = ({ user, onLogout }) => {
                   type="button"
                   aria-label="Emoji"
                 >
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10"/>
-                    <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
-                    <line x1="9" y1="9" x2="9.01" y2="9"/>
-                    <line x1="15" y1="9" x2="15.01" y2="9"/>
+                  <svg
+                    width="22"
+                    height="22"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+                    <line x1="9" y1="9" x2="9.01" y2="9" />
+                    <line x1="15" y1="9" x2="15.01" y2="9" />
                   </svg>
                 </button>
                 {showEmojiPicker ? (
@@ -1202,11 +1407,33 @@ const ChatsPage = ({ user, onLogout }) => {
                 ) : null}
               </div>
 
-              <button className="chat-send" onClick={send} aria-label={editingMessage ? t("save") : t("send")}>
+              <button
+                className="chat-send"
+                onClick={send}
+                aria-label={editingMessage ? t("save") : t("send")}
+              >
                 {editingMessage ? (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
                 ) : (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                  >
+                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                  </svg>
                 )}
               </button>
             </>
@@ -1221,25 +1448,79 @@ const ChatsPage = ({ user, onLogout }) => {
           onClick={(e) => e.stopPropagation()}
         >
           <button className="context-menu-item" onClick={handleReply}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="9 17 4 12 9 7" />
+              <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
+            </svg>
             {t("reply")}
           </button>
 
-          {contextMenu.message.username === me && contextMenu.message.type !== "voice" ? (
+          {contextMenu.message.username === me &&
+          contextMenu.message.type !== "voice" ? (
             <button className="context-menu-item" onClick={handleStartEdit}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
               {t("edit")}
             </button>
           ) : null}
 
           <button className="context-menu-item" onClick={handleDeleteForMe}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
             {t("deleteForMe")}
           </button>
 
           {contextMenu.message.username === me ? (
-            <button className="context-menu-item delete" onClick={handleDeleteForEveryone}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+            <button
+              className="context-menu-item delete"
+              onClick={handleDeleteForEveryone}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                <line x1="10" y1="11" x2="10" y2="17" />
+                <line x1="14" y1="11" x2="14" y2="17" />
+              </svg>
               {t("deleteForEveryone")}
             </button>
           ) : null}

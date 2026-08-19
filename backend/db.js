@@ -117,7 +117,9 @@ try {
 }
 
 function normalizeEmail(email) {
-  return String(email || "").trim().toLowerCase();
+  return String(email || "")
+    .trim()
+    .toLowerCase();
 }
 function normalizeUsername(username) {
   return String(username || "").trim();
@@ -126,22 +128,21 @@ function isEmailLike(s) {
   return /.+@.+\..+/.test(String(s || "").trim());
 }
 
-
 const stmtCreateUser = db.prepare(`
   INSERT INTO users (id, username, email, pass_hash, created_at)
   VALUES (@id, @username, @email, @pass_hash, @created_at)
 `);
 
 const stmtFindUserByEmail = db.prepare(
-  `SELECT id, username, email, pass_hash as passHash FROM users WHERE email = ?`
+  `SELECT id, username, email, pass_hash as passHash FROM users WHERE email = ?`,
 );
 
 const stmtFindUserByUsername = db.prepare(
-  `SELECT id, username, email, pass_hash as passHash FROM users WHERE username = ?`
+  `SELECT id, username, email, pass_hash as passHash FROM users WHERE username = ?`,
 );
 
 const stmtFindUserById = db.prepare(
-  `SELECT id, username, email, pass_hash as passHash FROM users WHERE id = ?`
+  `SELECT id, username, email, pass_hash as passHash FROM users WHERE id = ?`,
 );
 
 const stmtStoreRefresh = db.prepare(`
@@ -189,31 +190,25 @@ const stmtGetOtp = db.prepare(`
 `);
 
 const stmtDeleteOtp = db.prepare(`DELETE FROM otp_codes WHERE email = ?`);
-const stmtDeleteExpiredOtps = db.prepare(`DELETE FROM otp_codes WHERE expires_at < ?`);
+const stmtDeleteExpiredOtps = db.prepare(
+  `DELETE FROM otp_codes WHERE expires_at < ?`,
+);
 
 const stmtAddMessage = db.prepare(`
-<<<<<<< HEAD
   INSERT INTO messages (id, room, client_id, username, text, system, created_at, reply_to,
-                         attachment_url, attachment_name, attachment_type, attachment_size)
+                         attachment_url, attachment_name, attachment_type, attachment_size, type, voice_url)
   VALUES (@id, @room, @client_id, @username, @text, @system, @created_at, @reply_to,
-          @attachment_url, @attachment_name, @attachment_type, @attachment_size)
-=======
-  INSERT INTO messages (id, room, client_id, username, text, system, created_at, reply_to, type, voice_url)
-  VALUES (@id, @room, @client_id, @username, @text, @system, @created_at, @reply_to, @type, @voice_url)
->>>>>>> 60f1dbe04fbe8939c76bfaf92d7708ea15b3fde2
+          @attachment_url, @attachment_name, @attachment_type, @attachment_size, @type, @voice_url)
 `);
 
 const stmtGetRecentMessages = db.prepare(`
   SELECT id, room, client_id as clientId, username, text, system,
          created_at as createdAt, edited_at as editedAt,
          deleted_for_all as deletedForAll, reply_to as replyTo,
-<<<<<<< HEAD
          read_at as readAt,
          attachment_url as attachmentUrl, attachment_name as attachmentName,
-         attachment_type as attachmentType, attachment_size as attachmentSize
-=======
-         read_at as readAt, type, voice_url as voiceUrl
->>>>>>> 60f1dbe04fbe8939c76bfaf92d7708ea15b3fde2
+         attachment_type as attachmentType, attachment_size as attachmentSize,
+         type, voice_url as voiceUrl
   FROM messages
   WHERE room = ?
   ORDER BY created_at DESC
@@ -224,13 +219,10 @@ const stmtGetMessageById = db.prepare(`
   SELECT id, room, client_id as clientId, username, text, system,
          created_at as createdAt, edited_at as editedAt,
          deleted_for_all as deletedForAll, reply_to as replyTo,
-<<<<<<< HEAD
          read_at as readAt,
          attachment_url as attachmentUrl, attachment_name as attachmentName,
-         attachment_type as attachmentType, attachment_size as attachmentSize
-=======
-         read_at as readAt, type, voice_url as voiceUrl
->>>>>>> 60f1dbe04fbe8939c76bfaf92d7708ea15b3fde2
+         attachment_type as attachmentType, attachment_size as attachmentSize,
+         type, voice_url as voiceUrl
   FROM messages WHERE id = ?
 `);
 
@@ -238,13 +230,10 @@ const stmtGetMessageByClientId = db.prepare(`
   SELECT id, room, client_id as clientId, username, text, system,
          created_at as createdAt, edited_at as editedAt,
          deleted_for_all as deletedForAll, reply_to as replyTo,
-<<<<<<< HEAD
          read_at as readAt,
          attachment_url as attachmentUrl, attachment_name as attachmentName,
-         attachment_type as attachmentType, attachment_size as attachmentSize
-=======
-         read_at as readAt, type, voice_url as voiceUrl
->>>>>>> 60f1dbe04fbe8939c76bfaf92d7708ea15b3fde2
+         attachment_type as attachmentType, attachment_size as attachmentSize,
+         type, voice_url as voiceUrl
   FROM messages WHERE client_id = ?
 `);
 
@@ -272,7 +261,6 @@ const stmtMarkReadForRoomExceptUser = db.prepare(`
   SET read_at = ?
   WHERE room = ? AND username != ? AND created_at <= ? AND read_at IS NULL AND system = 0
 `);
-
 
 function createUser({ id, username, email, passHash }) {
   stmtCreateUser.run({
@@ -304,7 +292,12 @@ function findUserByIdentifier(identifier) {
 }
 
 function storeRefreshToken({ token, userId, expiresAt }) {
-  stmtStoreRefresh.run(String(token), String(userId), Date.now(), Number(expiresAt));
+  stmtStoreRefresh.run(
+    String(token),
+    String(userId),
+    Date.now(),
+    Number(expiresAt),
+  );
 }
 
 function revokeRefreshToken(token) {
@@ -329,7 +322,7 @@ function upsertOtp({ email, codeHash, expiresAt, username, passHash }) {
     String(codeHash),
     Number(expiresAt),
     normalizeUsername(username),
-    String(passHash)
+    String(passHash),
   );
 }
 
@@ -345,8 +338,19 @@ function deleteExpiredOtps() {
   stmtDeleteExpiredOtps.run(Date.now());
 }
 
-function addMessage({ id, room, clientId, username, text, system, createdAt, replyTo, attachment }) {
-function addMessage({ id, room, clientId, username, text, system, createdAt, replyTo, type, voiceUrl }) {
+function addMessage({
+  id,
+  room,
+  clientId,
+  username,
+  text,
+  system,
+  createdAt,
+  replyTo,
+  attachment,
+  type,
+  voiceUrl,
+}) {
   stmtAddMessage.run({
     id: String(id),
     room: String(room),
@@ -359,7 +363,8 @@ function addMessage({ id, room, clientId, username, text, system, createdAt, rep
     attachment_url: attachment?.url ? String(attachment.url) : null,
     attachment_name: attachment?.name ? String(attachment.name) : null,
     attachment_type: attachment?.type ? String(attachment.type) : null,
-    attachment_size: typeof attachment?.size === "number" ? attachment.size : null,
+    attachment_size:
+      typeof attachment?.size === "number" ? attachment.size : null,
     type: type || "text",
     voice_url: voiceUrl || null,
   });
@@ -391,13 +396,21 @@ function deleteMessageForUser(userId, messageId) {
 }
 
 function getDeletedMessageIdsForUser(userId, room) {
-  const rows = stmtGetDeletedMessageIdsForUser.all(String(userId), String(room));
+  const rows = stmtGetDeletedMessageIdsForUser.all(
+    String(userId),
+    String(room),
+  );
   return new Set(rows.map((r) => r.messageId));
 }
 
 function markReadForRoomExceptUser(room, username, readUpToTs) {
   const readAt = Date.now();
-  stmtMarkReadForRoomExceptUser.run(readAt, String(room), String(username), Number(readUpToTs));
+  stmtMarkReadForRoomExceptUser.run(
+    readAt,
+    String(room),
+    String(username),
+    Number(readUpToTs),
+  );
   return readAt;
 }
 
@@ -430,5 +443,4 @@ module.exports = {
   deleteMessageForUser,
   getDeletedMessageIdsForUser,
   markReadForRoomExceptUser,
-}
 };

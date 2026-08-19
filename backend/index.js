@@ -66,7 +66,7 @@ app.use(
   cors({
     origin: FRONTEND_ORIGIN,
     credentials: true,
-  })
+  }),
 );
 
 const UPLOADS_DIR = path.join(__dirname, "uploads");
@@ -90,7 +90,9 @@ const upload = multer({
 });
 
 function normalizeEmail(email) {
-  return String(email || "").trim().toLowerCase();
+  return String(email || "")
+    .trim()
+    .toLowerCase();
 }
 function normalizeUsername(username) {
   return String(username || "").trim();
@@ -178,7 +180,9 @@ app.post("/api/upload", requireAuth, (req, res) => {
   upload.single("file")(req, res, (err) => {
     if (err) {
       if (err.code === "LIMIT_FILE_SIZE") {
-        return res.status(413).json({ message: "Fayl çox böyükdür (max 25MB)" });
+        return res
+          .status(413)
+          .json({ message: "Fayl çox böyükdür (max 25MB)" });
       }
       return res.status(400).json({ message: "Fayl yüklənmədi" });
     }
@@ -186,8 +190,7 @@ app.post("/api/upload", requireAuth, (req, res) => {
     if (!req.file) return res.status(400).json({ message: "Fayl tapılmadı" });
 
     const origin =
-      process.env.FRONTEND_API_ORIGIN ||
-      `${req.protocol}://${req.get("host")}`;
+      process.env.FRONTEND_API_ORIGIN || `${req.protocol}://${req.get("host")}`;
 
     return res.json({
       url: `${origin.replace(/\/$/, "")}/uploads/${req.file.filename}`,
@@ -223,20 +226,26 @@ app.get("/api/invites/resolve", (req, res) => {
   }
 });
 
-
 app.post("/api/register/request-otp", async (req, res) => {
   const email = normalizeEmail(req.body?.email);
   const username = normalizeUsername(req.body?.username);
   const password = String(req.body?.password || "");
 
-  if (!isEmailLike(email)) return res.status(400).json({ message: "Email düzgün deyil" });
-  if (username.length < 3) return res.status(400).json({ message: "Username min 3 simvol" });
-  if (password.length < 6) return res.status(400).json({ message: "Password min 6 simvol" });
+  if (!isEmailLike(email))
+    return res.status(400).json({ message: "Email düzgün deyil" });
+  if (username.length < 3)
+    return res.status(400).json({ message: "Username min 3 simvol" });
+  if (password.length < 6)
+    return res.status(400).json({ message: "Password min 6 simvol" });
 
-  try { deleteExpiredOtps(); } catch {}
+  try {
+    deleteExpiredOtps();
+  } catch {}
 
-  if (findUserByEmail(email)) return res.status(409).json({ message: "Bu email artıq var" });
-  if (findUserByUsername(username)) return res.status(409).json({ message: "Bu username artıq var" });
+  if (findUserByEmail(email))
+    return res.status(409).json({ message: "Bu email artıq var" });
+  if (findUserByUsername(username))
+    return res.status(409).json({ message: "Bu username artıq var" });
 
   const passHash = await bcrypt.hash(password, 10);
 
@@ -269,11 +278,14 @@ app.post("/api/register/verify-otp", async (req, res) => {
   const email = normalizeEmail(req.body?.email);
   const code = String(req.body?.code || "").trim();
 
-  if (!isEmailLike(email)) return res.status(400).json({ message: "Email düzgün deyil" });
-  if (code.length !== 6) return res.status(400).json({ message: "OTP 6 rəqəm olmalıdır" });
+  if (!isEmailLike(email))
+    return res.status(400).json({ message: "Email düzgün deyil" });
+  if (code.length !== 6)
+    return res.status(400).json({ message: "OTP 6 rəqəm olmalıdır" });
 
   const entry = getOtp(email);
-  if (!entry) return res.status(400).json({ message: "OTP tapılmadı, yenidən göndər" });
+  if (!entry)
+    return res.status(400).json({ message: "OTP tapılmadı, yenidən göndər" });
 
   if (Date.now() > entry.expiresAt) {
     deleteOtp(email);
@@ -283,8 +295,10 @@ app.post("/api/register/verify-otp", async (req, res) => {
   const ok = await bcrypt.compare(code, entry.codeHash);
   if (!ok) return res.status(400).json({ message: "OTP yanlışdır" });
 
-  if (findUserByEmail(email)) return res.status(409).json({ message: "Bu email artıq var" });
-  if (findUserByUsername(entry.username)) return res.status(409).json({ message: "Bu username artıq var" });
+  if (findUserByEmail(email))
+    return res.status(409).json({ message: "Bu email artıq var" });
+  if (findUserByUsername(entry.username))
+    return res.status(409).json({ message: "Bu username artıq var" });
 
   const user = {
     id: randomUUID(),
@@ -316,7 +330,9 @@ app.post("/api/register/verify-otp", async (req, res) => {
 });
 
 app.post("/api/login", async (req, res) => {
-  const identifier = String(req.body?.identifier ?? req.body?.username ?? "").trim();
+  const identifier = String(
+    req.body?.identifier ?? req.body?.username ?? "",
+  ).trim();
   const password = String(req.body?.password || "");
 
   const user = findUserByIdentifier(identifier);
@@ -358,7 +374,8 @@ app.post("/api/refresh", (req, res) => {
 
   const rec = getRefreshTokenRecord(rt);
   if (!rec) return res.status(401).json({ message: "Refresh revoked" });
-  if (rec.revokedAt) return res.status(401).json({ message: "Refresh revoked" });
+  if (rec.revokedAt)
+    return res.status(401).json({ message: "Refresh revoked" });
 
   if (Date.now() > rec.expiresAt) {
     revokeRefreshToken(rt);
@@ -401,7 +418,12 @@ app.post("/api/refresh", (req, res) => {
 
 app.get("/api/me", optionalAuth, (req, res) => {
   if (!req.user) {
-    return res.json({ authenticated: false, id: null, username: null, email: null });
+    return res.json({
+      authenticated: false,
+      id: null,
+      username: null,
+      email: null,
+    });
   }
 
   const user = findUserById(req.user.sub);
@@ -412,7 +434,6 @@ app.get("/api/me", optionalAuth, (req, res) => {
     email: user?.email || null,
   });
 });
-
 
 const io = new Server(server, {
   cors: { origin: FRONTEND_ORIGIN, credentials: true },
@@ -481,17 +502,24 @@ io.on("connection", (socket) => {
             replyToData = {
               id: replied.id,
               username: replied.username,
-              text: replied.text.length > 80 ? replied.text.slice(0, 80) + "..." : replied.text,
+              text:
+                replied.text.length > 80
+                  ? replied.text.slice(0, 80) + "..."
+                  : replied.text,
             };
           }
         }
 
-        if (m.deletedForAll) return { ...m, text: "Bu mesaj silindi", replyToData: null };
+        if (m.deletedForAll)
+          return { ...m, text: "Bu mesaj silindi", replyToData: null };
         return { ...m, replyToData };
       });
 
     socket.emit("room:history", history);
-    socket.emit("room:joined", { room: r, users: Array.from(roomUsers.get(r)) });
+    socket.emit("room:joined", {
+      room: r,
+      users: Array.from(roomUsers.get(r)),
+    });
 
     const sysMsg = {
       id: randomUUID(),
@@ -508,71 +536,91 @@ io.on("connection", (socket) => {
     emitUsers(r);
   });
 
-  socket.on("message:send", ({ room, text, clientId, replyTo, attachment }) => {
-  socket.on("message:send", ({ room, text, clientId, replyTo, type, voiceData }) => {
-    const r = String(room || socket.data.room || "general").trim() || "general";
-    const msgType = type === "voice" ? "voice" : "text";
-    const t = String(text || "").trim();
+  socket.on(
+    "message:send",
+    ({ room, text, clientId, replyTo, attachment, type, voiceData }) => {
+      const r =
+        String(room || socket.data.room || "general").trim() || "general";
+      const msgType = type === "voice" ? "voice" : "text";
+      const t = String(text || "").trim();
 
-    let att = null;
-    if (attachment && attachment.url && attachment.name) {
-      att = {
-        url: String(attachment.url),
-        name: String(attachment.name),
-        type: attachment.type ? String(attachment.type) : "application/octet-stream",
-        size: typeof attachment.size === "number" ? attachment.size : null,
-      };
-    }
-
-    if (!t && !att) return;
-    if (msgType === "text" && !t) return;
-    if (msgType === "voice" && !voiceData) return;
-
-    let replyToData = null;
-    if (replyTo) {
-      const repliedMsg = getMessageById(String(replyTo));
-      if (repliedMsg && !repliedMsg.deletedForAll) {
-        replyToData = {
-          id: repliedMsg.id,
-          username: repliedMsg.username,
-          text: repliedMsg.text.length > 80 ? repliedMsg.text.slice(0, 80) + "..." : repliedMsg.text,
+      let att = null;
+      if (attachment && attachment.url && attachment.name) {
+        att = {
+          url: String(attachment.url),
+          name: String(attachment.name),
+          type: attachment.type
+            ? String(attachment.type)
+            : "application/octet-stream",
+          size: typeof attachment.size === "number" ? attachment.size : null,
         };
       }
-    }
 
-    const msg = {
-      id: randomUUID(),
-      room: r,
-      clientId: clientId ? String(clientId) : null,
-      username: socket.user.username,
-      text: msgType === "voice" ? (t || "Voice message") : t,
-      system: false,
-      createdAt: Date.now(),
-      replyTo: replyTo ? String(replyTo) : null,
-      replyToData,
-      editedAt: null,
-      deletedForAll: 0,
-      readAt: null,
-      attachmentUrl: att?.url || null,
-      attachmentName: att?.name || null,
-      attachmentType: att?.type || null,
-      attachmentSize: att?.size ?? null,
-      type: msgType,
-      voiceUrl: msgType === "voice" ? voiceData : null,
-    };
+      if (msgType === "voice" && !voiceData) return;
+      if (msgType === "text" && !t && !att) return;
 
-    addMessage({ ...msg, attachment: att });
-    io.to(r).emit("message:new", msg);
-    socket.emit("message:delivered", { clientId: msg.clientId, messageId: msg.id });
-  });
+      let replyToData = null;
+      if (replyTo) {
+        const repliedMsg = getMessageById(String(replyTo));
+        if (repliedMsg && !repliedMsg.deletedForAll) {
+          replyToData = {
+            id: repliedMsg.id,
+            username: repliedMsg.username,
+            text:
+              repliedMsg.text.length > 80
+                ? repliedMsg.text.slice(0, 80) + "..."
+                : repliedMsg.text,
+          };
+        }
+      }
+
+      const msg = {
+        id: randomUUID(),
+        room: r,
+        clientId: clientId ? String(clientId) : null,
+        username: socket.user.username,
+        text: msgType === "voice" ? t || "Voice message" : t,
+        system: false,
+        createdAt: Date.now(),
+        replyTo: replyTo ? String(replyTo) : null,
+        replyToData,
+        editedAt: null,
+        deletedForAll: 0,
+        readAt: null,
+        attachmentUrl: att?.url || null,
+        attachmentName: att?.name || null,
+        attachmentType: att?.type || null,
+        attachmentSize: att?.size ?? null,
+        type: msgType,
+        voiceUrl: msgType === "voice" ? voiceData : null,
+      };
+
+      addMessage({ ...msg, attachment: att });
+      io.to(r).emit("message:new", msg);
+      socket.emit("message:delivered", {
+        clientId: msg.clientId,
+        messageId: msg.id,
+      });
+    },
+  );
 
   socket.on("message:read", ({ room, readUpTo }) => {
     const r = String(room || socket.data.room || "general").trim() || "general";
     if (!readUpTo) return;
 
     try {
-      const readAt = markReadForRoomExceptUser(r, socket.user.username, readUpTo);
-      socket.to(r).emit("message:seen", { readUpTo, readAt, reader: socket.user.username });
+      const readAt = markReadForRoomExceptUser(
+        r,
+        socket.user.username,
+        readUpTo,
+      );
+      socket
+        .to(r)
+        .emit("message:seen", {
+          readUpTo,
+          readAt,
+          reader: socket.user.username,
+        });
     } catch (e) {
       console.log("read_at update error:", e?.message || e);
       socket.to(r).emit("message:seen", { readUpTo });
@@ -581,7 +629,9 @@ io.on("connection", (socket) => {
 
   socket.on("typing", ({ room, isTyping }) => {
     const r = String(room || socket.data.room || "general").trim() || "general";
-    socket.to(r).emit("typing", { username: socket.user.username, isTyping: !!isTyping });
+    socket
+      .to(r)
+      .emit("typing", { username: socket.user.username, isTyping: !!isTyping });
   });
 
   socket.on("message:edit", ({ messageId, newText }) => {
@@ -601,7 +651,11 @@ io.on("connection", (socket) => {
     updateMessageText(msg.id, trimmed);
     const editedAt = Date.now();
 
-    io.to(msg.room).emit("message:edited", { messageId: msg.id, newText: trimmed, editedAt });
+    io.to(msg.room).emit("message:edited", {
+      messageId: msg.id,
+      newText: trimmed,
+      editedAt,
+    });
   });
 
   socket.on("message:delete", ({ messageId, deleteFor }) => {
@@ -616,7 +670,10 @@ io.on("connection", (socket) => {
       if (msg.system) return;
 
       softDeleteMessageForAll(msg.id);
-      io.to(msg.room).emit("message:deleted", { messageId: msg.id, deletedFor: "everyone" });
+      io.to(msg.room).emit("message:deleted", {
+        messageId: msg.id,
+        deletedFor: "everyone",
+      });
     } else {
       deleteMessageForUser(socket.user.id, msg.id);
       socket.emit("message:deleted", { messageId: msg.id, deletedFor: "me" });
@@ -666,17 +723,29 @@ io.on("connection", (socket) => {
 
   socket.on("call:offer", ({ to, offer }) => {
     const targetSocketId = onlineSockets.get(String(to || ""));
-    if (targetSocketId) io.to(targetSocketId).emit("call:offer", { from: socket.user.username, offer });
+    if (targetSocketId)
+      io.to(targetSocketId).emit("call:offer", {
+        from: socket.user.username,
+        offer,
+      });
   });
 
   socket.on("call:answer", ({ to, answer }) => {
     const targetSocketId = onlineSockets.get(String(to || ""));
-    if (targetSocketId) io.to(targetSocketId).emit("call:answer", { from: socket.user.username, answer });
+    if (targetSocketId)
+      io.to(targetSocketId).emit("call:answer", {
+        from: socket.user.username,
+        answer,
+      });
   });
 
   socket.on("call:ice-candidate", ({ to, candidate }) => {
     const targetSocketId = onlineSockets.get(String(to || ""));
-    if (targetSocketId) io.to(targetSocketId).emit("call:ice-candidate", { from: socket.user.username, candidate });
+    if (targetSocketId)
+      io.to(targetSocketId).emit("call:ice-candidate", {
+        from: socket.user.username,
+        candidate,
+      });
   });
 
   socket.on("call:end", ({ to }) => {
@@ -704,7 +773,11 @@ io.on("connection", (socket) => {
       activeCalls.delete(u);
       activeCalls.delete(peer);
       const peerSocketId = onlineSockets.get(peer);
-      if (peerSocketId) io.to(peerSocketId).emit("call:ended", { from: u, reason: "disconnect" });
+      if (peerSocketId)
+        io.to(peerSocketId).emit("call:ended", {
+          from: u,
+          reason: "disconnect",
+        });
     }
 
     if (!r) return;
@@ -732,5 +805,6 @@ io.on("connection", (socket) => {
 });
 
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => console.log(`Backend running on http://localhost:${PORT}`))
-});
+server.listen(PORT, () =>
+  console.log(`Backend running on http://localhost:${PORT}`),
+);
