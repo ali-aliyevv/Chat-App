@@ -964,6 +964,19 @@ const ChatsPage = ({ user, onLogout }) => {
     [t],
   );
 
+  // For system (join/leave) messages coming from the server, prefer the
+  // translated systemKey ("{user} qoşuldu" / "joined" / "присоединился")
+  // and fall back to the raw English text for old rows that predate this.
+  const getDisplayText = useCallback(
+    (m) => {
+      if (m.system && m.systemKey) {
+        return t(m.systemKey, { user: m.systemUser });
+      }
+      return m.text;
+    },
+    [t],
+  );
+
   const items = useMemo(() => {
     const out = [];
     let lastDayKey = null;
@@ -1079,6 +1092,7 @@ const ChatsPage = ({ user, onLogout }) => {
               const isMine = !m.system && m.username === me;
               const isDeleted = !!m.deletedForAll;
               const isVoice = m.type === "voice" && m.voiceUrl;
+              const displayText = getDisplayText(m);
 
               return (
                 <div
@@ -1173,7 +1187,7 @@ const ChatsPage = ({ user, onLogout }) => {
                           </span>
                         ) : null}
 
-                        {m.text ? (
+                        {displayText ? (
                           <span
                             className={
                               m.attachmentUrl
@@ -1181,7 +1195,7 @@ const ChatsPage = ({ user, onLogout }) => {
                                 : undefined
                             }
                           >
-                            {m.text}
+                            {displayText}
                           </span>
                         ) : null}
                       </>
