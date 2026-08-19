@@ -5,6 +5,10 @@
       "destination": "https://chat-app-2-1mdy.onrender.com/api/:path*"
     },
     {
+      "source": "/socket.io",
+      "destination": "https://chat-app-2-1mdy.onrender.com/socket.io"
+    },
+    {
       "source": "/socket.io/:path*",
       "destination": "https://chat-app-2-1mdy.onrender.com/socket.io/:path*"
     },
