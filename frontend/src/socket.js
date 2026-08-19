@@ -1,6 +1,6 @@
 import { io } from "socket.io-client";
 
-const URL = import.meta.env.VITE_API_URL || "https://chat-app-2-1mdy.onrender.com";
+const URL = import.meta.env.VITE_API_URL || undefined;
 
 export const socket = io(URL, {
   withCredentials: true,
