@@ -1,4 +1,6 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useCallback, useContext, useState } from "react";
+import PropTypes from "prop-types";
 import { translations } from "../i18n/translations";
 
 const LanguageContext = createContext(null);
@@ -30,12 +32,20 @@ export function LanguageProvider({ children }) {
     }
   }, []);
 
+  // t("userJoined", { user: "ali123" }) -> "{user} qoşuldu" mətnindəki
+  // {user} yerdəyişənini "ali123" ilə əvəz edir.
   const t = useCallback(
-    (key) => {
+    (key, vars) => {
       const dict = translations[lang] || translations[DEFAULT_LANG];
-      return dict[key] ?? key;
+      let str = dict[key] ?? key;
+      if (vars) {
+        Object.keys(vars).forEach((k) => {
+          str = str.replace(new RegExp(`{${k}}`, "g"), vars[k]);
+        });
+      }
+      return str;
     },
-    [lang]
+    [lang],
   );
 
   return (
@@ -44,6 +54,10 @@ export function LanguageProvider({ children }) {
     </LanguageContext.Provider>
   );
 }
+
+LanguageProvider.propTypes = {
+  children: PropTypes.node.isRequired,
+};
 
 export function useLanguage() {
   const ctx = useContext(LanguageContext);

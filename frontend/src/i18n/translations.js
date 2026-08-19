@@ -19,7 +19,8 @@ export const translations = {
     loginSubtitle: "Email və ya Username ilə daxil ol",
     registerSubtitle: "Email + Username (OTP ilə)",
     generateRoom: "Otaq yarat",
-    inviteReady: "Dəvət hazırdır. QR scan edən adam linkə girib login olacaq və avtomatik bu otağa düşəcək.",
+    inviteReady:
+      "Dəvət hazırdır. QR scan edən adam linkə girib login olacaq və avtomatik bu otağa düşəcək.",
     openInviteLink: "Dəvət linkini aç",
     copyLink: "Linki kopyala",
     otpHint: "üçün 6 rəqəm OTP kodunu daxil et",
@@ -53,6 +54,9 @@ export const translations = {
     uploading: "Yüklənir...",
     fileTooLarge: "Fayl çox böyükdür (maks. 25MB)",
     uploadFailed: "Fayl göndərilmədi",
+    // System (join/leave)
+    userJoined: "{user} qoşuldu",
+    userLeft: "{user} ayrıldı",
     // Calls
     audioCall: "Səsli zəng",
     videoCall: "Görüntülü zəng",
@@ -102,7 +106,8 @@ export const translations = {
     loginSubtitle: "Sign in with Email or Username",
     registerSubtitle: "Email + Username (with OTP)",
     generateRoom: "Generate room",
-    inviteReady: "Invite is ready. Anyone who scans the QR code will be redirected to this room after login.",
+    inviteReady:
+      "Invite is ready. Anyone who scans the QR code will be redirected to this room after login.",
     openInviteLink: "Open invite link",
     copyLink: "Copy link",
     otpHint: "Enter the 6-digit OTP code for",
@@ -136,6 +141,9 @@ export const translations = {
     uploading: "Uploading...",
     fileTooLarge: "File is too large (max 25MB)",
     uploadFailed: "File failed to send",
+    // System (join/leave)
+    userJoined: "{user} joined",
+    userLeft: "{user} left",
     // Calls
     audioCall: "Voice call",
     videoCall: "Video call",
@@ -185,7 +193,8 @@ export const translations = {
     loginSubtitle: "Войдите с Email или именем пользователя",
     registerSubtitle: "Email + Имя пользователя (с OTP)",
     generateRoom: "Создать комнату",
-    inviteReady: "Приглашение готово. Любой, кто отсканирует QR-код, будет перенаправлен в эту комнату после входа.",
+    inviteReady:
+      "Приглашение готово. Любой, кто отсканирует QR-код, будет перенаправлен в эту комнату после входа.",
     openInviteLink: "Открыть ссылку",
     copyLink: "Копировать ссылку",
     otpHint: "Введите 6-значный OTP-код для",
@@ -219,6 +228,9 @@ export const translations = {
     uploading: "Загрузка...",
     fileTooLarge: "Файл слишком большой (макс. 25MB)",
     uploadFailed: "Не удалось отправить файл",
+    // System (join/leave)
+    userJoined: "{user} присоединился(-лась)",
+    userLeft: "{user} покинул(а) чат",
     // Calls
     audioCall: "Голосовой звонок",
     videoCall: "Видеозвонок",

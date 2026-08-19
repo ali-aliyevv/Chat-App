@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+/* eslint-disable react-refresh/only-export-components */
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
+import PropTypes from "prop-types";
 
 const ThemeContext = createContext(null);
 
@@ -18,14 +26,18 @@ function getInitialTheme() {
 
 function resolveTheme(preference) {
   if (preference === "system") {
-    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    return window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
   }
   return preference;
 }
 
 export function ThemeProvider({ children }) {
   const [theme, setThemeState] = useState(getInitialTheme);
-  const [resolved, setResolved] = useState(() => resolveTheme(getInitialTheme()));
+  const [resolved, setResolved] = useState(() =>
+    resolveTheme(getInitialTheme()),
+  );
 
   const applyTheme = useCallback((res) => {
     document.documentElement.setAttribute("data-theme", res);
@@ -43,7 +55,7 @@ export function ThemeProvider({ children }) {
       }
       applyTheme(resolveTheme(newTheme));
     },
-    [applyTheme]
+    [applyTheme],
   );
 
   useEffect(() => {
@@ -65,6 +77,10 @@ export function ThemeProvider({ children }) {
     </ThemeContext.Provider>
   );
 }
+
+ThemeProvider.propTypes = {
+  children: PropTypes.node.isRequired,
+};
 
 export function useTheme() {
   const ctx = useContext(ThemeContext);

@@ -63,7 +63,7 @@ export function useCall() {
       cleanup();
       setCallState({ ...IDLE_STATE, error: errorKey });
     },
-    [cleanup]
+    [cleanup],
   );
 
   const clearError = useCallback(() => {
@@ -75,7 +75,10 @@ export function useCall() {
 
     pc.onicecandidate = (e) => {
       if (e.candidate) {
-        socket.emit("call:ice-candidate", { to: target, candidate: e.candidate });
+        socket.emit("call:ice-candidate", {
+          to: target,
+          candidate: e.candidate,
+        });
       }
     };
 
@@ -86,7 +89,9 @@ export function useCall() {
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "connected") {
         setCallState((s) =>
-          s.status !== "active" ? { ...s, status: "active", startedAt: s.startedAt || Date.now() } : s
+          s.status !== "active"
+            ? { ...s, status: "active", startedAt: s.startedAt || Date.now() }
+            : s,
         );
       }
     };
@@ -119,7 +124,9 @@ export function useCall() {
 
       try {
         const stream = await navigator.mediaDevices.getUserMedia(
-          type === "video" ? { audio: true, video: true } : { audio: true, video: false }
+          type === "video"
+            ? { audio: true, video: true }
+            : { audio: true, video: false },
         );
         localStreamRef.current = stream;
         setLocalStream(stream);
@@ -128,10 +135,17 @@ export function useCall() {
         return;
       }
 
-      setCallState({ status: "calling", callType: type, peer: target, isCaller: true, error: null, startedAt: null });
+      setCallState({
+        status: "calling",
+        callType: type,
+        peer: target,
+        isCaller: true,
+        error: null,
+        startedAt: null,
+      });
       socket.emit("call:invite", { to: target, callType: type });
     },
-    [resetToIdle]
+    [resetToIdle],
   );
 
   const acceptCall = useCallback(async () => {
@@ -140,7 +154,9 @@ export function useCall() {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia(
-        cs.callType === "video" ? { audio: true, video: true } : { audio: true, video: false }
+        cs.callType === "video"
+          ? { audio: true, video: true }
+          : { audio: true, video: false },
       );
       localStreamRef.current = stream;
       setLocalStream(stream);
@@ -300,7 +316,12 @@ export function useCall() {
       socket.off("call:busy", onBusy);
       socket.off("call:ended", onEnded);
     };
-  }, [createPeerConnection, attachLocalTracks, flushPendingCandidates, resetToIdle]);
+  }, [
+    createPeerConnection,
+    attachLocalTracks,
+    flushPendingCandidates,
+    resetToIdle,
+  ]);
 
   useEffect(() => {
     return () => {

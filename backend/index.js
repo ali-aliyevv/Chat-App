@@ -521,12 +521,17 @@ io.on("connection", (socket) => {
       users: Array.from(roomUsers.get(r)),
     });
 
+    // NOTE: "text" is an English fallback for old clients / old DB rows.
+    // New clients should use systemKey + systemUser and translate locally
+    // via translations.js -> userJoined / userLeft.
     const sysMsg = {
       id: randomUUID(),
       room: r,
       clientId: null,
       username: null,
       text: `${u} joined`,
+      systemKey: "userJoined",
+      systemUser: u,
       system: true,
       createdAt: Date.now(),
     };
@@ -614,13 +619,11 @@ io.on("connection", (socket) => {
         socket.user.username,
         readUpTo,
       );
-      socket
-        .to(r)
-        .emit("message:seen", {
-          readUpTo,
-          readAt,
-          reader: socket.user.username,
-        });
+      socket.to(r).emit("message:seen", {
+        readUpTo,
+        readAt,
+        reader: socket.user.username,
+      });
     } catch (e) {
       console.log("read_at update error:", e?.message || e);
       socket.to(r).emit("message:seen", { readUpTo });
@@ -788,12 +791,16 @@ io.on("connection", (socket) => {
       if (set.size === 0) roomUsers.delete(r);
     }
 
+    // NOTE: "text" is an English fallback; new clients should use
+    // systemKey + systemUser and translate locally.
     const sysMsg = {
       id: randomUUID(),
       room: r,
       clientId: null,
       username: null,
       text: `${u} left`,
+      systemKey: "userLeft",
+      systemUser: u,
       system: true,
       createdAt: Date.now(),
     };
