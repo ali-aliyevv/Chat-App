@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import PropTypes from "prop-types";
 import EmojiPicker from "emoji-picker-react";
 import { socket } from "./socket";
@@ -19,6 +26,7 @@ function formatTime(createdAt) {
 }
 
 function formatDuration(sec) {
+  if (!Number.isFinite(sec) || sec < 0) return "0:00";
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
   return `${m}:${String(s).padStart(2, "0")}`;
@@ -155,10 +163,33 @@ function VoicePlayer({ src }) {
         ref={audioRef}
         src={src}
         preload="metadata"
-        onLoadedMetadata={() => setDuration(audioRef.current?.duration || 0)}
+        onLoadedMetadata={() => {
+          const a = audioRef.current;
+          if (!a) return;
+          if (Number.isFinite(a.duration)) {
+            setDuration(a.duration);
+            return;
+          }
+          // Chrome/Android reports Infinity for MediaRecorder webm blobs
+          // until the real duration is forced to resolve by seeking past
+          // the end once, then back to the start.
+          const onTimeUpdate = () => {
+            a.removeEventListener("timeupdate", onTimeUpdate);
+            setDuration(Number.isFinite(a.duration) ? a.duration : 0);
+            a.currentTime = 0;
+          };
+          a.addEventListener("timeupdate", onTimeUpdate);
+          a.currentTime = 1e7;
+        }}
+        onDurationChange={() => {
+          const a = audioRef.current;
+          if (a && Number.isFinite(a.duration)) setDuration(a.duration);
+        }}
         onTimeUpdate={() => {
           const a = audioRef.current;
-          if (a && a.duration) setProgress((a.currentTime / a.duration) * 100);
+          if (a && Number.isFinite(a.duration) && a.duration > 0) {
+            setProgress((a.currentTime / a.duration) * 100);
+          }
         }}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
@@ -217,6 +248,10 @@ const ChatsPage = ({ user, onLogout }) => {
   const [text, setText] = useState("");
 
   const [contextMenu, setContextMenu] = useState(null);
+  const contextMenuRef = useRef(null);
+  const longPressTimerRef = useRef(null);
+  const longPressStartPosRef = useRef({ x: 0, y: 0 });
+  const suppressNextCloseRef = useRef(false);
 
   const [editingMessage, setEditingMessage] = useState(null);
 
@@ -341,7 +376,15 @@ const ChatsPage = ({ user, onLogout }) => {
   }, [call, otherOnlineUser, t]);
 
   useEffect(() => {
-    const close = () => setContextMenu(null);
+    const close = () => {
+      // The synthetic click that follows the touchend of a long-press
+      // would otherwise immediately close the menu we just opened.
+      if (suppressNextCloseRef.current) {
+        suppressNextCloseRef.current = false;
+        return;
+      }
+      setContextMenu(null);
+    };
     document.addEventListener("click", close);
     document.addEventListener("scroll", close, true);
     return () => {
@@ -349,6 +392,27 @@ const ChatsPage = ({ user, onLogout }) => {
       document.removeEventListener("scroll", close, true);
     };
   }, []);
+
+  // Keep the menu fully on-screen — the raw tap/click coordinates it opens
+  // at can sit right against a phone's screen edge.
+  useLayoutEffect(() => {
+    if (!contextMenu) return;
+    const el = contextMenuRef.current;
+    if (!el) return;
+    const margin = 8;
+    const rect = el.getBoundingClientRect();
+    const x = Math.min(
+      contextMenu.x,
+      Math.max(margin, window.innerWidth - rect.width - margin),
+    );
+    const y = Math.min(
+      contextMenu.y,
+      Math.max(margin, window.innerHeight - rect.height - margin),
+    );
+    if (x !== contextMenu.x || y !== contextMenu.y) {
+      setContextMenu((cm) => (cm ? { ...cm, x, y } : cm));
+    }
+  }, [contextMenu]);
 
   useEffect(() => {
     let mounted = true;
@@ -621,16 +685,61 @@ const ChatsPage = ({ user, onLogout }) => {
     }
   }, [messages.length, scrollToBottom]);
 
-  const handleContextMenu = useCallback((e, msg) => {
-    if (msg.system) return;
-    if (msg.deletedForAll) return;
-
-    if (String(msg.id || "").startsWith("tmp_")) return;
-    if (msg.status === "sending") return;
-
-    e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY, message: msg });
+  const canOpenMenuFor = useCallback((msg) => {
+    if (msg.system) return false;
+    if (msg.deletedForAll) return false;
+    if (String(msg.id || "").startsWith("tmp_")) return false;
+    if (msg.status === "sending") return false;
+    return true;
   }, []);
+
+  const handleContextMenu = useCallback(
+    (e, msg) => {
+      if (!canOpenMenuFor(msg)) return;
+      e.preventDefault();
+      setContextMenu({ x: e.clientX, y: e.clientY, message: msg });
+    },
+    [canOpenMenuFor],
+  );
+
+  // Mobile browsers don't reliably fire "contextmenu" from a long-press,
+  // so drive the same menu from a manual touch-and-hold timer instead
+  // (WhatsApp-style).
+  const clearLongPress = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  const handleTouchStart = useCallback(
+    (e, msg) => {
+      if (!canOpenMenuFor(msg)) return;
+      const touch = e.touches[0];
+      if (!touch) return;
+      longPressStartPosRef.current = { x: touch.clientX, y: touch.clientY };
+
+      clearLongPress();
+      longPressTimerRef.current = setTimeout(() => {
+        longPressTimerRef.current = null;
+        suppressNextCloseRef.current = true;
+        if (navigator.vibrate) navigator.vibrate(15);
+        setContextMenu({ x: touch.clientX, y: touch.clientY, message: msg });
+      }, 500);
+    },
+    [canOpenMenuFor, clearLongPress],
+  );
+
+  const handleTouchMove = useCallback(
+    (e) => {
+      const touch = e.touches[0];
+      if (!touch) return;
+      const dx = touch.clientX - longPressStartPosRef.current.x;
+      const dy = touch.clientY - longPressStartPosRef.current.y;
+      if (Math.hypot(dx, dy) > 10) clearLongPress();
+    },
+    [clearLongPress],
+  );
 
   const handleReply = useCallback(() => {
     if (!contextMenu?.message) return;
@@ -1099,6 +1208,10 @@ const ChatsPage = ({ user, onLogout }) => {
                   key={it.key}
                   className={`msg ${m.system ? "system" : isMine ? "mine" : "theirs"}`}
                   onContextMenu={(e) => handleContextMenu(e, m)}
+                  onTouchStart={(e) => handleTouchStart(e, m)}
+                  onTouchMove={handleTouchMove}
+                  onTouchEnd={clearLongPress}
+                  onTouchCancel={clearLongPress}
                 >
                   {!m.system ? (
                     <div className="msg-user">
@@ -1457,6 +1570,7 @@ const ChatsPage = ({ user, onLogout }) => {
 
       {contextMenu ? (
         <div
+          ref={contextMenuRef}
           className="context-menu"
           style={{ top: contextMenu.y, left: contextMenu.x }}
           onClick={(e) => e.stopPropagation()}

@@ -550,6 +550,14 @@ body {
   transform: translateY(0px);
 }
 
+@media (hover: none) and (pointer: coarse) {
+  .msg {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
 .context-menu {
   position: fixed;
   z-index: 1000;
