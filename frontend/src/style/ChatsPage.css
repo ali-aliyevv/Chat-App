@@ -467,6 +467,7 @@ body {
 
 .chat-input{
   flex:1;
+  min-width: 0;
   padding: 12px 14px;
   border-radius: 14px;
   border: 1px solid var(--chat-input-border);
@@ -850,14 +851,6 @@ body {
     padding: 12px;
   }
 
-  .emoji-picker-popover {
-    position: fixed;
-    left: 12px;
-    right: 12px;
-    bottom: 78px;
-    width: auto;
-  }
-
   .msg-attachment-image,
   .msg-attachment-doc {
     max-width: min(260px, 70vw);
@@ -866,6 +859,11 @@ body {
   .voice-player {
     width: min(200px, 65vw);
     min-width: 0;
+  }
+
+  .chat-inputRow {
+    padding: 10px;
+    gap: 8px;
   }
 }
 
@@ -905,6 +903,142 @@ body {
   overflow: hidden;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
   animation: ctxFadeIn 0.15s ease;
+  background: var(--chat-ctx-bg);
+  border: 1px solid var(--chat-ctx-border);
+}
+
+@media (max-width: 860px) {
+  .emoji-picker-popover {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: 78px;
+    width: auto;
+    z-index: 1000;
+  }
+}
+
+.picker-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 8px 0;
+}
+
+.picker-tab {
+  flex: 1;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: var(--chat-subtitle-color);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.picker-tab.active {
+  background: var(--chat-user-bg);
+  color: var(--chat-title-color);
+}
+
+.sticker-grid {
+  max-width: 100%;
+  height: 360px;
+  overflow-y: auto;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 8px;
+  box-sizing: border-box;
+}
+
+.sticker-add-tile {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  border: 1px dashed var(--chat-ctx-border);
+  background: var(--chat-user-bg);
+  color: var(--chat-subtitle-color);
+  font-size: 26px;
+  font-weight: 300;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sticker-tile {
+  position: relative;
+}
+
+.sticker-tile-btn {
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 4px;
+  border: none;
+  border-radius: 12px;
+  background: var(--chat-user-bg);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sticker-tile-btn img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.sticker-tile-remove {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: var(--chat-ctx-delete);
+  color: #fff;
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.sticker-tile:hover .sticker-tile-remove {
+  opacity: 1;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .sticker-tile-remove {
+    opacity: 0.85;
+  }
+}
+
+.sticker-empty {
+  grid-column: 1 / -1;
+  padding: 24px 8px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--chat-subtitle-color);
+}
+
+.msg-sticker-image {
+  width: 128px;
+  height: 128px;
+  object-fit: contain;
+  display: block;
+}
+
+.msg-bubble.sticker {
+  background: none;
+  border: none;
+  padding: 0;
 }
 
 /* ── Voice player (in bubble) ── */

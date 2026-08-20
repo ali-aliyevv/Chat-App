@@ -291,11 +291,17 @@ const ChatsPage = ({ user, onLogout }) => {
   const [uploadError, setUploadError] = useState(null);
   const [callErrorMsg, setCallErrorMsg] = useState(null);
 
-  const call = useCall();
+  const call = useCall(me);
   /* ── Emoji picker state ── */
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [emojiPickerWidth, setEmojiPickerWidth] = useState(320);
   const emojiPickerRef = useRef(null);
+
+  /* ── Sticker tray state ── */
+  const [pickerTab, setPickerTab] = useState("emoji");
+  const [stickers, setStickers] = useState([]);
+  const stickersLoadedRef = useRef(false);
+  const stickerFileInputRef = useRef(null);
 
   /* ── Voice recording state ── */
   const [isRecording, setIsRecording] = useState(false);
@@ -395,8 +401,8 @@ const ChatsPage = ({ user, onLogout }) => {
       setTimeout(() => setCallErrorMsg(null), 4000);
       return;
     }
-    call.startCall(otherOnlineUser, "audio");
-  }, [call, otherOnlineUser, t]);
+    call.startCall(room, "audio");
+  }, [call, otherOnlineUser, room, t]);
 
   const handleVideoCall = useCallback(() => {
     if (!otherOnlineUser) {
@@ -404,8 +410,8 @@ const ChatsPage = ({ user, onLogout }) => {
       setTimeout(() => setCallErrorMsg(null), 4000);
       return;
     }
-    call.startCall(otherOnlineUser, "video");
-  }, [call, otherOnlineUser, t]);
+    call.startCall(room, "video");
+  }, [call, otherOnlineUser, room, t]);
 
   useEffect(() => {
     const close = () => {
@@ -960,6 +966,109 @@ const ChatsPage = ({ user, onLogout }) => {
     inputRef.current?.focus();
   }, []);
 
+  /* ── Sticker handlers ── */
+  const loadStickers = useCallback(async () => {
+    if (stickersLoadedRef.current) return;
+    stickersLoadedRef.current = true;
+    try {
+      const res = await api.get("/api/stickers");
+      setStickers(Array.isArray(res.data) ? res.data : []);
+    } catch {
+      stickersLoadedRef.current = false;
+    }
+  }, []);
+
+  const handleStickerFileChange = useCallback(
+    async (e) => {
+      const file = e.target.files?.[0];
+      e.target.value = "";
+      if (!file) return;
+
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        setUploadError(t("fileTooLarge"));
+        setTimeout(() => setUploadError(null), 4000);
+        return;
+      }
+
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        const uploadRes = await api.post("/api/upload", formData);
+        const { url, name } = uploadRes.data;
+        const stickerRes = await api.post("/api/stickers", { url, name });
+        setStickers((prev) => [stickerRes.data, ...prev]);
+      } catch {
+        setUploadError(t("uploadFailed"));
+        setTimeout(() => setUploadError(null), 4000);
+      }
+    },
+    [t],
+  );
+
+  const handleDeleteSticker = useCallback(async (id) => {
+    setStickers((prev) => prev.filter((s) => s.id !== id));
+    try {
+      await api.delete(`/api/stickers/${id}`);
+    } catch {
+      /* sticker tray will resync on next open if this silently failed */
+    }
+  }, []);
+
+  const sendSticker = useCallback(
+    (sticker) => {
+      shouldAutoScrollRef.current = true;
+      const tmpId = `tmp_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      const nowIso = new Date().toISOString();
+      const replyToId = replyingTo?.id || null;
+
+      const optimistic = {
+        id: tmpId,
+        room,
+        clientId: tmpId,
+        username: me,
+        text: "",
+        system: false,
+        createdAt: nowIso,
+        status: "sending",
+        replyTo: replyToId,
+        replyToData: replyingTo
+          ? {
+              id: replyingTo.id,
+              username: replyingTo.username,
+              text: truncate(replyingTo.text, 80),
+            }
+          : null,
+        editedAt: null,
+        deletedForAll: 0,
+        type: "sticker",
+        attachmentUrl: sticker.url,
+        attachmentName: sticker.name || "sticker",
+        attachmentType: "image/*",
+        attachmentSize: null,
+      };
+
+      setMessages((prev) => mergeMessages(prev, [optimistic]));
+      setReplyingTo(null);
+      setShowEmojiPicker(false);
+      requestAnimationFrame(() => scrollToBottom("smooth"));
+
+      socket.emit("message:send", {
+        room,
+        text: "",
+        clientId: tmpId,
+        replyTo: replyToId,
+        type: "sticker",
+        attachment: {
+          url: sticker.url,
+          name: sticker.name || "sticker",
+          type: "image/*",
+          size: null,
+        },
+      });
+    },
+    [room, me, replyingTo, scrollToBottom],
+  );
+
   /* ── Voice recording handlers ── */
   const startRecording = useCallback(async () => {
     try {
@@ -1361,9 +1470,9 @@ const ChatsPage = ({ user, onLogout }) => {
           <CallHistoryView
             callHistory={callHistory}
             me={me}
-            onCallBack={(peer, callType) => {
+            onCallBack={(callType) => {
               setActiveTab("chat");
-              call.startCall(peer, callType);
+              call.startCall(room, callType);
             }}
           />
         ) : (
@@ -1400,6 +1509,7 @@ const ChatsPage = ({ user, onLogout }) => {
               const isMine = !m.system && m.username === me;
               const isDeleted = !!m.deletedForAll;
               const isVoice = m.type === "voice" && m.voiceUrl;
+              const isSticker = m.type === "sticker" && m.attachmentUrl;
               const displayText = getDisplayText(m);
 
               return (
@@ -1446,7 +1556,7 @@ const ChatsPage = ({ user, onLogout }) => {
                   ) : null}
 
                   <div
-                    className={`msg-bubble ${isDeleted ? "deleted" : ""}`}
+                    className={`msg-bubble ${isDeleted ? "deleted" : ""} ${isSticker && !isDeleted ? "sticker" : ""}`}
                     ref={(el) => {
                       if (el) msgRowRefs.current.set(m.id, el);
                       else msgRowRefs.current.delete(m.id);
@@ -1467,6 +1577,12 @@ const ChatsPage = ({ user, onLogout }) => {
                       <span className="msg-deleted-text">
                         {t("messageDeleted")}
                       </span>
+                    ) : isSticker ? (
+                      <img
+                        src={m.attachmentUrl}
+                        alt={m.attachmentName || "sticker"}
+                        className="msg-sticker-image"
+                      />
                     ) : isVoice ? (
                       <VoicePlayer src={m.voiceUrl} />
                     ) : (
@@ -1714,13 +1830,14 @@ const ChatsPage = ({ user, onLogout }) => {
                 </button>
               ) : null}
 
-              {/* Emoji picker toggle - right side */}
+              {/* Emoji/sticker picker toggle - right side */}
               <div className="emoji-picker-wrapper" ref={emojiPickerRef}>
                 <button
                   className="chat-icon-btn"
                   onClick={() => {
                     setEmojiPickerWidth(Math.min(320, window.innerWidth - 24));
                     setShowEmojiPicker((p) => !p);
+                    loadStickers();
                   }}
                   type="button"
                   aria-label="Emoji"
@@ -1743,16 +1860,76 @@ const ChatsPage = ({ user, onLogout }) => {
                 </button>
                 {showEmojiPicker ? (
                   <div className="emoji-picker-popover">
-                    <EmojiPicker
-                      key={emojiPickerWidth}
-                      onEmojiClick={onEmojiClick}
-                      width={emojiPickerWidth}
-                      height={400}
-                      searchDisabled={false}
-                      skinTonesDisabled
-                      previewConfig={{ showPreview: false }}
-                      theme={resolvedTheme === "dark" ? "dark" : "light"}
-                    />
+                    <div className="picker-tabs">
+                      <button
+                        type="button"
+                        className={`picker-tab ${pickerTab === "emoji" ? "active" : ""}`}
+                        onClick={() => setPickerTab("emoji")}
+                      >
+                        {t("emojiTab")}
+                      </button>
+                      <button
+                        type="button"
+                        className={`picker-tab ${pickerTab === "stickers" ? "active" : ""}`}
+                        onClick={() => setPickerTab("stickers")}
+                      >
+                        {t("stickersTab")}
+                      </button>
+                    </div>
+
+                    {pickerTab === "emoji" ? (
+                      <EmojiPicker
+                        key={emojiPickerWidth}
+                        onEmojiClick={onEmojiClick}
+                        width={emojiPickerWidth}
+                        height={360}
+                        searchDisabled={false}
+                        skinTonesDisabled
+                        previewConfig={{ showPreview: false }}
+                        theme={resolvedTheme === "dark" ? "dark" : "light"}
+                      />
+                    ) : (
+                      <div className="sticker-grid" style={{ width: emojiPickerWidth }}>
+                        <input
+                          ref={stickerFileInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleStickerFileChange}
+                          style={{ display: "none" }}
+                        />
+                        <button
+                          type="button"
+                          className="sticker-add-tile"
+                          onClick={() => stickerFileInputRef.current?.click()}
+                          title={t("addSticker")}
+                        >
+                          +
+                        </button>
+                        {stickers.length === 0 ? (
+                          <div className="sticker-empty">{t("noStickersYet")}</div>
+                        ) : (
+                          stickers.map((s) => (
+                            <div key={s.id} className="sticker-tile">
+                              <button
+                                type="button"
+                                className="sticker-tile-btn"
+                                onClick={() => sendSticker(s)}
+                              >
+                                <img src={s.url} alt={s.name || "sticker"} />
+                              </button>
+                              <button
+                                type="button"
+                                className="sticker-tile-remove"
+                                onClick={() => handleDeleteSticker(s.id)}
+                                title={t("deleteSticker")}
+                              >
+                                &#10005;
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : null}
               </div>
@@ -1920,8 +2097,9 @@ const ChatsPage = ({ user, onLogout }) => {
 
       <CallModal
         callState={call.callState}
+        me={me}
         localStream={call.localStream}
-        remoteStream={call.remoteStream}
+        remoteStreams={call.remoteStreams}
         muted={call.muted}
         cameraOff={call.cameraOff}
         canSwitchCamera={call.canSwitchCamera}

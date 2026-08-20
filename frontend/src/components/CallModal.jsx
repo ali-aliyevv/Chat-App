@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import PropTypes from "prop-types";
 import { useLanguage } from "../context/LanguageContext";
 import "./CallModal.css";
@@ -54,6 +54,15 @@ const SwitchCameraIcon = () => (
   </svg>
 );
 
+const PeopleIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+  </svg>
+);
+
 function formatDuration(startedAt) {
   if (!startedAt) return "00:00";
   const secs = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
@@ -62,10 +71,75 @@ function formatDuration(startedAt) {
   return `${m}:${s}`;
 }
 
+function RemoteVideoTile({ username, stream, retryToken, onBlockedChange, placeholder }) {
+  const videoRef = useRef(null);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    el.srcObject = stream || null;
+    if (!stream) return;
+    const p = el.play();
+    if (p && typeof p.then === "function") {
+      p.then(() => onBlockedChange(username, false)).catch(() => onBlockedChange(username, true));
+    }
+  }, [stream, username, onBlockedChange, retryToken]);
+
+  return (
+    <div className="call-video-tile">
+      {stream ? (
+        <video ref={videoRef} autoPlay playsInline />
+      ) : (
+        <div className="call-tile-placeholder">
+          {placeholder || (username || "?").charAt(0).toUpperCase()}
+        </div>
+      )}
+      {username ? <span className="call-tile-name">{username}</span> : null}
+    </div>
+  );
+}
+
+RemoteVideoTile.propTypes = {
+  username: PropTypes.string,
+  stream: PropTypes.object,
+  retryToken: PropTypes.number.isRequired,
+  onBlockedChange: PropTypes.func.isRequired,
+  placeholder: PropTypes.node,
+};
+
+// Audio calls (and video calls before the grid renders) have no <video>
+// element to carry the remote MediaStream's audio track — without this the
+// call would be silent. Only mounted while the video grid isn't, so a
+// video call's tile (which plays the same stream) never double-plays audio.
+function RemoteAudioSink({ username, stream, retryToken, onBlockedChange }) {
+  const audioRef = useRef(null);
+
+  useEffect(() => {
+    const el = audioRef.current;
+    if (!el) return;
+    el.srcObject = stream || null;
+    if (!stream) return;
+    const p = el.play();
+    if (p && typeof p.then === "function") {
+      p.then(() => onBlockedChange(username, false)).catch(() => onBlockedChange(username, true));
+    }
+  }, [stream, username, onBlockedChange, retryToken]);
+
+  return <audio ref={audioRef} autoPlay />;
+}
+
+RemoteAudioSink.propTypes = {
+  username: PropTypes.string.isRequired,
+  stream: PropTypes.object,
+  retryToken: PropTypes.number.isRequired,
+  onBlockedChange: PropTypes.func.isRequired,
+};
+
 export default function CallModal({
   callState,
+  me,
   localStream,
-  remoteStream,
+  remoteStreams,
   muted,
   cameraOff,
   canSwitchCamera,
@@ -78,9 +152,17 @@ export default function CallModal({
 }) {
   const { t } = useLanguage();
   const localVideoRef = useRef(null);
-  const remoteVideoRef = useRef(null);
   const [, forceTick] = useState(0);
-  const [playbackBlocked, setPlaybackBlocked] = useState(false);
+  const [blockedTiles, setBlockedTiles] = useState({});
+  const [retryToken, setRetryToken] = useState(0);
+  const [showParticipants, setShowParticipants] = useState(false);
+
+  const onBlockedChange = useCallback((username, blocked) => {
+    setBlockedTiles((prev) => {
+      if (!!prev[username] === blocked) return prev;
+      return { ...prev, [username]: blocked };
+    });
+  }, []);
 
   useEffect(() => {
     const el = localVideoRef.current;
@@ -89,34 +171,10 @@ export default function CallModal({
     if (localStream) el.play().catch(() => {});
   }, [localStream]);
 
-  useEffect(() => {
-    const el = remoteVideoRef.current;
-    if (!el) return;
-    el.srcObject = remoteStream || null;
-    if (!remoteStream) {
-      setPlaybackBlocked(false);
-      return;
-    }
-    // Mobile browsers can block autoplay of an unmuted <video> (this one
-    // carries the call's remote audio) when it isn't tied closely enough
-    // to a user gesture — surface a tap-to-resume prompt instead of a
-    // silently blank/frozen call screen.
-    const playPromise = el.play();
-    if (playPromise && typeof playPromise.then === "function") {
-      playPromise.then(() => setPlaybackBlocked(false)).catch(() => setPlaybackBlocked(true));
-    }
-  }, [remoteStream]);
-
   const resumePlayback = () => {
-    const remote = remoteVideoRef.current;
     const local = localVideoRef.current;
     if (local) local.play().catch(() => {});
-    if (remote) {
-      remote
-        .play()
-        .then(() => setPlaybackBlocked(false))
-        .catch(() => setPlaybackBlocked(true));
-    }
+    setRetryToken((v) => v + 1);
   };
 
   useEffect(() => {
@@ -133,10 +191,27 @@ export default function CallModal({
   const isConnecting = callState.status === "connecting";
   const isActive = callState.status === "active";
   const hasLocalVideo = !!localStream && localStream.getVideoTracks().length > 0;
-  // Show the full video layout as soon as our own camera/mic are live
-  // (calling/connecting), not just once "active" — matches WhatsApp, and
-  // means the remote video appears immediately once it starts flowing.
-  const showVideoStage = isVideo && (isCalling || isConnecting || isActive);
+
+  const otherEntries = Object.entries(callState.participants || {}).filter(
+    ([u]) => u !== me,
+  );
+  const allOthers = otherEntries.map(([u]) => u);
+  const joinedOthers = otherEntries
+    .filter(([, p]) => p.status === "joined")
+    .map(([u]) => u);
+
+  const playbackBlocked = Object.values(blockedTiles).some(Boolean);
+
+  // Video call layout shows as soon as our own camera/mic are live
+  // (calling/connecting/active), not just once "active" — matches
+  // WhatsApp, and means remote video appears the instant it starts
+  // flowing. A single placeholder tile keeps the 1:1 caller's own preview
+  // full-screen while dialing, exactly like before.
+  const showVideoGrid = isVideo && (isCalling || isConnecting || isActive);
+  const tileUsernames = joinedOthers.length > 0 ? joinedOthers : [null];
+  const tileCount = Math.min(tileUsernames.length, 6);
+
+  const singleOtherName = isRinging ? callState.starter : allOthers[0];
 
   let statusLabel = "";
   if (isCalling) statusLabel = t("calling");
@@ -145,22 +220,58 @@ export default function CallModal({
 
   return (
     <div className="call-overlay">
-      <div className={`call-panel ${showVideoStage ? "video-mode" : ""}`}>
-        {showVideoStage ? (
+      <div className={`call-panel ${showVideoGrid ? "video-mode" : ""}`}>
+        {showVideoGrid ? (
           <>
-            <video ref={remoteVideoRef} className="call-video-remote" autoPlay playsInline />
+            <div className="call-video-grid" data-count={tileCount}>
+              {tileUsernames.map((u) => (
+                <RemoteVideoTile
+                  key={u || "__waiting__"}
+                  username={u}
+                  stream={u ? remoteStreams[u] : null}
+                  retryToken={retryToken}
+                  onBlockedChange={onBlockedChange}
+                  placeholder={u ? undefined : "…"}
+                />
+              ))}
+            </div>
             {hasLocalVideo ? (
               <video ref={localVideoRef} className="call-video-local" autoPlay playsInline muted />
             ) : null}
           </>
         ) : (
           <>
-            <video ref={remoteVideoRef} className="call-audio-remote-sink" autoPlay playsInline />
+            {Object.entries(remoteStreams).map(([u, s]) => (
+              <RemoteAudioSink
+                key={`audio-${u}`}
+                username={u}
+                stream={s}
+                retryToken={retryToken}
+                onBlockedChange={onBlockedChange}
+              />
+            ))}
             <div className="call-avatar-wrap">
-              <div className={`call-avatar ${isRinging || isCalling ? "pulsing" : ""}`}>
-                {(callState.peer || "?").charAt(0).toUpperCase()}
+              {allOthers.length > 1 ? (
+                <div className="call-avatar-row">
+                  {allOthers.map((u) => (
+                    <div
+                      key={u}
+                      className={`call-avatar small ${
+                        callState.participants[u]?.status === "ringing" ? "pulsing" : ""
+                      }`}
+                    >
+                      {(u || "?").charAt(0).toUpperCase()}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className={`call-avatar ${isRinging || isCalling ? "pulsing" : ""}`}>
+                  {(singleOtherName || "?").charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div className="call-peer-name">
+                {allOthers.length > 1 ? allOthers.join(", ") : singleOtherName}
               </div>
-              <div className="call-peer-name">{callState.peer}</div>
               <div className="call-status-label">
                 {isRinging
                   ? isVideo
@@ -172,10 +283,41 @@ export default function CallModal({
           </>
         )}
 
-        {showVideoStage ? (
+        {showVideoGrid ? (
           <div className="call-video-overlay-info">
-            <span className="call-peer-name">{callState.peer}</span>
             <span className="call-status-label">{statusLabel}</span>
+          </div>
+        ) : null}
+
+        {allOthers.length > 0 ? (
+          <div className="call-participants-wrap">
+            <button
+              type="button"
+              className="call-participant-badge"
+              onClick={() => setShowParticipants((v) => !v)}
+            >
+              <PeopleIcon />
+              {allOthers.length + 1}
+            </button>
+            {showParticipants ? (
+              <div className="call-participant-list">
+                {[me, ...allOthers].map((u) => (
+                  <div key={u} className="call-participant-row">
+                    <span className="call-participant-dot" />
+                    <span>{u}</span>
+                    <span className="call-participant-status">
+                      {u === me
+                        ? ""
+                        : callState.participants[u]?.status === "joined"
+                          ? t("connected")
+                          : callState.participants[u]?.status === "ringing"
+                            ? t("ringingStatus")
+                            : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -229,11 +371,13 @@ CallModal.propTypes = {
   callState: PropTypes.shape({
     status: PropTypes.string.isRequired,
     callType: PropTypes.string.isRequired,
-    peer: PropTypes.string,
+    starter: PropTypes.string,
+    participants: PropTypes.object,
     startedAt: PropTypes.number,
   }).isRequired,
+  me: PropTypes.string.isRequired,
   localStream: PropTypes.object,
-  remoteStream: PropTypes.object,
+  remoteStreams: PropTypes.object.isRequired,
   muted: PropTypes.bool.isRequired,
   cameraOff: PropTypes.bool.isRequired,
   canSwitchCamera: PropTypes.bool,

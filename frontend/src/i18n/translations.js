@@ -98,6 +98,17 @@ export const translations = {
     deliveredAt: "Çatdı",
     notDeliveredYet: "Hələ çatmayıb",
     notReadYet: "Hələ oxunmayıb",
+    // Group calls
+    callFull: "Zəng iştirakçı limitinə çatıb",
+    connected: "Qoşuldu",
+    ringingStatus: "Zəng edilir...",
+    groupCallLabel: "Qrup zəngi · {count} nəfər",
+    // Stickers
+    emojiTab: "Emoji",
+    stickersTab: "Stikerlər",
+    addSticker: "Stiker əlavə et",
+    noStickersYet: "Hələ stikeriniz yoxdur",
+    deleteSticker: "Stikeri sil",
     // Settings
     language: "Dil",
     theme: "Tema",
@@ -204,6 +215,17 @@ export const translations = {
     deliveredAt: "Delivered",
     notDeliveredYet: "Not delivered yet",
     notReadYet: "Not read yet",
+    // Group calls
+    callFull: "Call has reached the participant limit",
+    connected: "Connected",
+    ringingStatus: "Ringing...",
+    groupCallLabel: "Group call · {count} people",
+    // Stickers
+    emojiTab: "Emoji",
+    stickersTab: "Stickers",
+    addSticker: "Add sticker",
+    noStickersYet: "No stickers yet",
+    deleteSticker: "Delete sticker",
     // Settings
     language: "Language",
     theme: "Theme",
@@ -310,6 +332,17 @@ export const translations = {
     deliveredAt: "Доставлено",
     notDeliveredYet: "Ещё не доставлено",
     notReadYet: "Ещё не прочитано",
+    // Групповые звонки
+    callFull: "Достигнут лимит участников звонка",
+    connected: "Подключён",
+    ringingStatus: "Звонок...",
+    groupCallLabel: "Групповой звонок · {count} чел.",
+    // Стикеры
+    emojiTab: "Эмодзи",
+    stickersTab: "Стикеры",
+    addSticker: "Добавить стикер",
+    noStickersYet: "Стикеров пока нет",
+    deleteSticker: "Удалить стикер",
      // Settings
     language: "Язык",
     theme: "Тема",

@@ -5,8 +5,8 @@ const ICE_SERVERS = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
   // Public TURN relay (Open Relay Project) — required so calls can connect
-  // when both peers are behind NAT/CGNAT (e.g. two phones on different
-  // mobile networks), where STUN alone cannot establish connectivity.
+  // when peers are behind NAT/CGNAT (e.g. two phones on different mobile
+  // networks), where STUN alone cannot establish connectivity.
   { urls: "stun:stun.relay.metered.ca:80" },
   {
     urls: "turn:global.relay.metered.ca:80",
@@ -56,7 +56,7 @@ async function acquireLocalMedia(wantVideo) {
   } catch (err) {
     if (!CAMERA_FALLBACK_ERRORS.includes(err?.name)) throw err;
     // No usable camera on this device — keep the call alive as audio-only
-    // instead of rejecting/ending it; the remote side can still send video.
+    // instead of rejecting/ending it; other participants can still send video.
     return {
       stream: await navigator.mediaDevices.getUserMedia({
         audio: true,
@@ -67,30 +67,43 @@ async function acquireLocalMedia(wantVideo) {
   }
 }
 
+function snapshotToObject(arr) {
+  const obj = {};
+  (arr || []).forEach((p) => {
+    obj[p.username] = { status: p.status };
+  });
+  return obj;
+}
+
 const IDLE_STATE = {
-  status: "idle",
+  status: "idle", // idle | ringing | calling | connecting | active
+  callId: null,
   callType: "audio",
-  peer: null,
-  isCaller: false,
+  isStarter: false,
+  starter: null,
+  participants: {}, // { [username]: { status: 'ringing'|'joined'|'declined'|'left' } }
   error: null,
   startedAt: null,
 };
 
-export function useCall() {
+// useCall(me) — `me` (own username) is needed to tell "my own join
+// confirmation" apart from "someone else joined" in the group-call
+// participant events, and to compute how many other joined peers remain.
+export function useCall(me) {
   const [callState, setCallState] = useState(IDLE_STATE);
   const [localStream, setLocalStream] = useState(null);
-  const [remoteStream, setRemoteStream] = useState(null);
+  const [remoteStreams, setRemoteStreams] = useState({});
   const [muted, setMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
-
   const [canSwitchCamera, setCanSwitchCamera] = useState(false);
 
   const callStateRef = useRef(callState);
   const localStreamRef = useRef(null);
-  const pcRef = useRef(null);
-  const pendingCandidatesRef = useRef([]);
-  const connectTimerRef = useRef(null);
+  const pcMapRef = useRef(new Map()); // username -> RTCPeerConnection
+  const pendingCandidatesRef = useRef(new Map()); // username -> candidate[]
+  const connectTimersRef = useRef(new Map()); // username -> timeout handle
   const facingModeRef = useRef("user");
+  const hasJoinedRef = useRef(false); // am I a joined participant of the current call?
 
   useEffect(() => {
     callStateRef.current = callState;
@@ -105,25 +118,25 @@ export function useCall() {
   }, []);
 
   const cleanup = useCallback(() => {
-    if (connectTimerRef.current) {
-      clearTimeout(connectTimerRef.current);
-      connectTimerRef.current = null;
-    }
-    if (pcRef.current) {
-      pcRef.current.onicecandidate = null;
-      pcRef.current.ontrack = null;
-      pcRef.current.onconnectionstatechange = null;
-      pcRef.current.oniceconnectionstatechange = null;
+    pcMapRef.current.forEach((pc) => {
+      pc.onicecandidate = null;
+      pc.ontrack = null;
+      pc.onconnectionstatechange = null;
+      pc.oniceconnectionstatechange = null;
       try {
-        pcRef.current.close();
+        pc.close();
       } catch {
         /* ignore */
       }
-      pcRef.current = null;
-    }
-    pendingCandidatesRef.current = [];
+    });
+    pcMapRef.current.clear();
+    connectTimersRef.current.forEach((timer) => clearTimeout(timer));
+    connectTimersRef.current.clear();
+    pendingCandidatesRef.current.clear();
+    hasJoinedRef.current = false;
+
     stopLocalStream();
-    setRemoteStream(null);
+    setRemoteStreams({});
     setMuted(false);
     setCameraOff(false);
     setCanSwitchCamera(false);
@@ -141,28 +154,74 @@ export function useCall() {
     setCallState((s) => ({ ...s, error: null }));
   }, []);
 
-  const createPeerConnection = useCallback(
-    (target) => {
+  // Called when a specific peer connection dies (failed/closed/timed out)
+  // rather than the server telling us they left. Drops just that one tile;
+  // if I have no other joined peers left afterward, I proactively leave the
+  // call too (mirrors the old 1:1 "connection failed -> end call" behavior
+  // for the common 2-party case, without ending a group call over one bad
+  // connection — the server remains authoritative either way).
+  const handlePeerGone = useCallback(
+    (username) => {
+      const pc = pcMapRef.current.get(username);
+      if (pc) {
+        try {
+          pc.close();
+        } catch {
+          /* ignore */
+        }
+      }
+      pcMapRef.current.delete(username);
+
+      const timer = connectTimersRef.current.get(username);
+      if (timer) {
+        clearTimeout(timer);
+        connectTimersRef.current.delete(username);
+      }
+      pendingCandidatesRef.current.delete(username);
+
+      setRemoteStreams((prev) => {
+        if (!(username in prev)) return prev;
+        const next = { ...prev };
+        delete next[username];
+        return next;
+      });
+
+      const cs = callStateRef.current;
+      const otherJoined = Object.entries(cs.participants || {}).filter(
+        ([u, p]) => u !== me && u !== username && p.status === "joined",
+      );
+      if (otherJoined.length === 0 && cs.callId) {
+        socket.emit("call:leave", { callId: cs.callId });
+        resetToIdle("callConnectFailed");
+      }
+    },
+    [me, resetToIdle],
+  );
+
+  const createPeerConnectionFor = useCallback(
+    (username) => {
       const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
       pc.onicecandidate = (e) => {
         if (e.candidate) {
           socket.emit("call:ice-candidate", {
-            to: target,
+            callId: callStateRef.current.callId,
+            to: username,
             candidate: e.candidate,
           });
         }
       };
 
       pc.ontrack = (e) => {
-        setRemoteStream(e.streams[0]);
+        setRemoteStreams((prev) => ({ ...prev, [username]: e.streams[0] }));
       };
 
       pc.onconnectionstatechange = () => {
         if (pc.connectionState === "connected") {
-          if (connectTimerRef.current) {
-            clearTimeout(connectTimerRef.current);
-            connectTimerRef.current = null;
+          const timer = connectTimersRef.current.get(username);
+          if (timer) {
+            clearTimeout(timer);
+            connectTimersRef.current.delete(username);
           }
           setCallState((s) =>
             s.status !== "active"
@@ -173,10 +232,7 @@ export function useCall() {
           pc.connectionState === "failed" ||
           pc.connectionState === "closed"
         ) {
-          if (callStateRef.current.peer === target) {
-            socket.emit("call:end", { to: target });
-            resetToIdle("callConnectFailed");
-          }
+          if (pcMapRef.current.get(username) === pc) handlePeerGone(username);
         }
       };
 
@@ -190,36 +246,50 @@ export function useCall() {
         }
       };
 
-      pcRef.current = pc;
+      pcMapRef.current.set(username, pc);
 
-      // If ICE/DTLS never converges (typical when two peers are behind
-      // NATs the TURN relay can't help with, or the network is down),
-      // surface an error instead of hanging on "Connecting..." forever.
-      connectTimerRef.current = setTimeout(() => {
+      const timer = setTimeout(() => {
         if (
-          callStateRef.current.peer === target &&
-          callStateRef.current.status !== "active"
+          pcMapRef.current.get(username) === pc &&
+          pc.connectionState !== "connected"
         ) {
-          socket.emit("call:end", { to: target });
-          resetToIdle("callConnectFailed");
+          handlePeerGone(username);
         }
       }, CONNECT_TIMEOUT_MS);
+      connectTimersRef.current.set(username, timer);
 
       return pc;
     },
-    [resetToIdle],
+    [handlePeerGone],
   );
 
-  const attachLocalTracks = useCallback((pc, stream) => {
+  // Attaches local tracks to a pc, plus: if this device has no camera
+  // (audio-only fallback) but the call is a video call, still offer to
+  // receive that peer's video so their camera feed shows up on our side.
+  // Must run for every pc regardless of offerer/answerer role, since under
+  // group orchestration either side can end up creating the offer.
+  const attachLocalTracksWithFallback = useCallback((pc) => {
+    const stream = localStreamRef.current;
+    if (!stream) return;
     stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+    if (
+      callStateRef.current.callType === "video" &&
+      stream.getVideoTracks().length === 0
+    ) {
+      try {
+        pc.addTransceiver("video", { direction: "recvonly" });
+      } catch {
+        /* ignore */
+      }
+    }
   }, []);
 
-  const flushPendingCandidates = useCallback(async () => {
-    const pc = pcRef.current;
+  const flushPendingCandidates = useCallback(async (username) => {
+    const pc = pcMapRef.current.get(username);
     if (!pc) return;
-    const queued = pendingCandidatesRef.current;
-    pendingCandidatesRef.current = [];
-    for (const c of queued) {
+    const queue = pendingCandidatesRef.current.get(username) || [];
+    pendingCandidatesRef.current.delete(username);
+    for (const c of queue) {
       try {
         await pc.addIceCandidate(new RTCIceCandidate(c));
       } catch {
@@ -243,8 +313,8 @@ export function useCall() {
   }, []);
 
   const startCall = useCallback(
-    async (target, type) => {
-      if (!target || callStateRef.current.status !== "idle") return;
+    async (room, type) => {
+      if (!room || callStateRef.current.status !== "idle") return;
 
       let videoFallback = false;
       try {
@@ -262,20 +332,22 @@ export function useCall() {
 
       setCallState({
         status: "calling",
+        callId: null,
         callType: type,
-        peer: target,
-        isCaller: true,
+        isStarter: true,
+        starter: me,
+        participants: {},
         error: videoFallback ? "noCameraAudioOnly" : null,
         startedAt: null,
       });
-      socket.emit("call:invite", { to: target, callType: type });
+      socket.emit("call:start", { room, callType: type });
     },
-    [resetToIdle, refreshCanSwitchCamera],
+    [me, resetToIdle, refreshCanSwitchCamera],
   );
 
   const acceptCall = useCallback(async () => {
     const cs = callStateRef.current;
-    if (cs.status !== "ringing" || !cs.peer) return;
+    if (cs.status !== "ringing" || !cs.callId) return;
 
     try {
       const { stream, videoFallback } = await acquireLocalMedia(
@@ -285,31 +357,28 @@ export function useCall() {
       setLocalStream(stream);
       refreshCanSwitchCamera(stream.getVideoTracks().length > 0);
 
-      const pc = createPeerConnection(cs.peer);
-      attachLocalTracks(pc, stream);
-
       setCallState((s) => ({
         ...s,
         status: "connecting",
         error: videoFallback ? "noCameraAudioOnly" : s.error,
       }));
-      socket.emit("call:accept", { to: cs.peer });
+      socket.emit("call:join", { callId: cs.callId });
     } catch {
-      socket.emit("call:reject", { to: cs.peer });
+      socket.emit("call:decline", { callId: cs.callId });
       resetToIdle("micDenied");
     }
-  }, [createPeerConnection, attachLocalTracks, resetToIdle, refreshCanSwitchCamera]);
+  }, [resetToIdle, refreshCanSwitchCamera]);
 
   const rejectCall = useCallback(() => {
     const cs = callStateRef.current;
-    if (cs.status !== "ringing" || !cs.peer) return;
-    socket.emit("call:reject", { to: cs.peer });
+    if (cs.status !== "ringing" || !cs.callId) return;
+    socket.emit("call:decline", { callId: cs.callId });
     resetToIdle(null);
   }, [resetToIdle]);
 
   const endCall = useCallback(() => {
     const cs = callStateRef.current;
-    if (cs.peer) socket.emit("call:end", { to: cs.peer });
+    if (cs.callId) socket.emit("call:leave", { callId: cs.callId });
     resetToIdle(null);
   }, [resetToIdle]);
 
@@ -349,11 +418,12 @@ export function useCall() {
       const newTrack = newStream.getVideoTracks()[0];
       if (!newTrack) return;
 
-      const pc = pcRef.current;
-      const sender = pc
-        ?.getSenders()
-        .find((s) => s.track && s.track.kind === "video");
-      if (sender) await sender.replaceTrack(newTrack);
+      for (const pc of pcMapRef.current.values()) {
+        const sender = pc
+          .getSenders()
+          .find((s) => s.track && s.track.kind === "video");
+        if (sender) await sender.replaceTrack(newTrack);
+      }
 
       const wasEnabled = currentTrack.enabled;
       currentTrack.stop();
@@ -368,79 +438,97 @@ export function useCall() {
   }, []);
 
   useEffect(() => {
-    const onIncoming = ({ from, callType }) => {
-      if (callStateRef.current.status !== "idle") {
-        socket.emit("call:reject", { to: from });
+    const onRing = ({ callId, callType, from, participants }) => {
+      const cs = callStateRef.current;
+      if (cs.status !== "idle" && cs.callId !== callId) {
+        // Already in a different call — auto-decline, mirrors the old
+        // "busy" behavior.
+        socket.emit("call:decline", { callId });
         return;
       }
-      setCallState({
-        status: "ringing",
-        callType: callType === "video" ? "video" : "audio",
-        peer: from,
-        isCaller: false,
-        error: null,
-        startedAt: null,
-      });
+      if (cs.status === "idle") {
+        setCallState({
+          status: "ringing",
+          callId,
+          callType: callType === "video" ? "video" : "audio",
+          isStarter: false,
+          starter: from,
+          participants: snapshotToObject(participants),
+          error: null,
+          startedAt: null,
+        });
+      } else {
+        // Reconnect resume for a call already tracked — just refresh the roster.
+        setCallState((s) => ({ ...s, participants: snapshotToObject(participants) }));
+      }
     };
 
-    const onAccepted = async ({ from }) => {
-      const cs = callStateRef.current;
-      if (cs.status !== "calling" || cs.peer !== from) return;
+    const onStarted = ({ callId, callType, participants }) => {
+      hasJoinedRef.current = true;
+      setCallState((s) => ({
+        ...s,
+        status: "calling",
+        callId,
+        callType: callType === "video" ? "video" : "audio",
+        participants: snapshotToObject(participants),
+      }));
+    };
 
-      const stream = localStreamRef.current;
-      if (!stream) {
-        resetToIdle("micDenied");
+    const onParticipantJoined = async ({ callId, username, participants }) => {
+      if (callStateRef.current.callId !== callId) return;
+      setCallState((s) => ({ ...s, participants: snapshotToObject(participants) }));
+
+      if (username === me) {
+        hasJoinedRef.current = true;
+        setCallState((s) => (s.status === "active" ? s : { ...s, status: "connecting" }));
         return;
       }
 
-      const pc = createPeerConnection(from);
-      attachLocalTracks(pc, stream);
-
-      // If this device has no camera (audio-only fallback) but the call
-      // was started as a video call, still offer to receive the peer's
-      // video so their camera feed shows up on our side.
-      if (cs.callType === "video" && stream.getVideoTracks().length === 0) {
+      // Existing-member-offers-to-newcomer rule: only already-joined
+      // clients proactively create an offer.
+      if (hasJoinedRef.current && localStreamRef.current) {
+        const pc = createPeerConnectionFor(username);
+        attachLocalTracksWithFallback(pc);
         try {
-          pc.addTransceiver("video", { direction: "recvonly" });
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          socket.emit("call:offer", { callId, to: username, offer });
         } catch {
-          /* ignore */
+          /* connect-timeout will surface if this peer never connects */
         }
       }
-
-      try {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        setCallState((s) => ({ ...s, status: "connecting" }));
-        socket.emit("call:offer", { to: from, offer });
-      } catch {
-        socket.emit("call:end", { to: from });
-        resetToIdle("micDenied");
-      }
     };
 
-    const onOffer = async ({ from, offer }) => {
-      const pc = pcRef.current;
-      if (!pc || callStateRef.current.peer !== from) return;
+    const onOffer = async ({ callId, from, offer }) => {
+      if (callStateRef.current.callId !== callId) return;
+      let pc = pcMapRef.current.get(from);
+      if (!pc) {
+        pc = createPeerConnectionFor(from);
+        attachLocalTracksWithFallback(pc);
+      }
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
-      await flushPendingCandidates();
+      await flushPendingCandidates(from);
 
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
-      socket.emit("call:answer", { to: from, answer });
+      socket.emit("call:answer", { callId, to: from, answer });
     };
 
-    const onAnswer = async ({ from, answer }) => {
-      const pc = pcRef.current;
-      if (!pc || callStateRef.current.peer !== from) return;
+    const onAnswer = async ({ callId, from, answer }) => {
+      if (callStateRef.current.callId !== callId) return;
+      const pc = pcMapRef.current.get(from);
+      if (!pc) return;
       await pc.setRemoteDescription(new RTCSessionDescription(answer));
-      await flushPendingCandidates();
+      await flushPendingCandidates(from);
     };
 
-    const onIceCandidate = async ({ from, candidate }) => {
-      if (callStateRef.current.peer !== from) return;
-      const pc = pcRef.current;
+    const onIceCandidate = async ({ callId, from, candidate }) => {
+      if (callStateRef.current.callId !== callId) return;
+      const pc = pcMapRef.current.get(from);
       if (!pc || !pc.remoteDescription) {
-        pendingCandidatesRef.current.push(candidate);
+        const q = pendingCandidatesRef.current.get(from) || [];
+        q.push(candidate);
+        pendingCandidatesRef.current.set(from, q);
         return;
       }
       try {
@@ -450,50 +538,75 @@ export function useCall() {
       }
     };
 
-    const onRejected = ({ from }) => {
-      if (callStateRef.current.peer !== from) return;
-      resetToIdle("callRejected");
+    const onParticipantDeclined = ({ callId, participants }) => {
+      if (callStateRef.current.callId !== callId) return;
+      setCallState((s) => ({ ...s, participants: snapshotToObject(participants) }));
     };
 
-    const onUnavailable = ({ to }) => {
-      if (callStateRef.current.peer !== to) return;
-      resetToIdle("callUnavailable");
+    const onParticipantLeft = ({ callId, username, participants }) => {
+      if (callStateRef.current.callId !== callId) return;
+      setCallState((s) => ({ ...s, participants: snapshotToObject(participants) }));
+
+      const pc = pcMapRef.current.get(username);
+      if (pc) {
+        try {
+          pc.close();
+        } catch {
+          /* ignore */
+        }
+        pcMapRef.current.delete(username);
+      }
+      const timer = connectTimersRef.current.get(username);
+      if (timer) {
+        clearTimeout(timer);
+        connectTimersRef.current.delete(username);
+      }
+      pendingCandidatesRef.current.delete(username);
+      setRemoteStreams((prev) => {
+        if (!(username in prev)) return prev;
+        const next = { ...prev };
+        delete next[username];
+        return next;
+      });
     };
 
-    const onBusy = ({ to }) => {
-      if (callStateRef.current.peer !== to) return;
-      resetToIdle("callBusy");
+    const onCallFull = ({ callId }) => {
+      if (callStateRef.current.callId !== callId) return;
+      resetToIdle("callFull");
     };
 
-    const onEnded = ({ from }) => {
-      if (callStateRef.current.peer !== from) return;
+    const onEnded = ({ callId }) => {
+      if (callStateRef.current.callId !== callId) return;
       resetToIdle(null);
     };
 
-    socket.on("call:incoming", onIncoming);
-    socket.on("call:accepted", onAccepted);
+    socket.on("call:ring", onRing);
+    socket.on("call:started", onStarted);
+    socket.on("call:participant-joined", onParticipantJoined);
     socket.on("call:offer", onOffer);
     socket.on("call:answer", onAnswer);
     socket.on("call:ice-candidate", onIceCandidate);
-    socket.on("call:rejected", onRejected);
-    socket.on("call:unavailable", onUnavailable);
-    socket.on("call:busy", onBusy);
+    socket.on("call:participant-declined", onParticipantDeclined);
+    socket.on("call:participant-left", onParticipantLeft);
+    socket.on("call:full", onCallFull);
     socket.on("call:ended", onEnded);
 
     return () => {
-      socket.off("call:incoming", onIncoming);
-      socket.off("call:accepted", onAccepted);
+      socket.off("call:ring", onRing);
+      socket.off("call:started", onStarted);
+      socket.off("call:participant-joined", onParticipantJoined);
       socket.off("call:offer", onOffer);
       socket.off("call:answer", onAnswer);
       socket.off("call:ice-candidate", onIceCandidate);
-      socket.off("call:rejected", onRejected);
-      socket.off("call:unavailable", onUnavailable);
-      socket.off("call:busy", onBusy);
+      socket.off("call:participant-declined", onParticipantDeclined);
+      socket.off("call:participant-left", onParticipantLeft);
+      socket.off("call:full", onCallFull);
       socket.off("call:ended", onEnded);
     };
   }, [
-    createPeerConnection,
-    attachLocalTracks,
+    me,
+    createPeerConnectionFor,
+    attachLocalTracksWithFallback,
     flushPendingCandidates,
     resetToIdle,
   ]);
@@ -543,7 +656,7 @@ export function useCall() {
   useEffect(() => {
     return () => {
       const cs = callStateRef.current;
-      if (cs.peer) socket.emit("call:end", { to: cs.peer });
+      if (cs.callId) socket.emit("call:leave", { callId: cs.callId });
       cleanup();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -552,7 +665,7 @@ export function useCall() {
   return {
     callState,
     localStream,
-    remoteStream,
+    remoteStreams,
     muted,
     cameraOff,
     canSwitchCamera,

@@ -29,6 +29,15 @@ const VideoTypeIcon = () => (
   </svg>
 );
 
+const GroupIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+  </svg>
+);
+
 function formatDuration(sec) {
   if (!Number.isFinite(sec) || sec < 0) return "0:00";
   const m = Math.floor(sec / 60);
@@ -47,25 +56,8 @@ function formatWhen(ts) {
     " " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-function isMissedLike(status) {
-  return status === "missed" || status === "rejected" || status === "unavailable" || status === "busy";
-}
-
 export default function CallHistoryView({ callHistory, me, onCallBack }) {
   const { t } = useLanguage();
-
-  function labelFor(row) {
-    const iAmCaller = row.caller === me;
-    if (row.status === "accepted" || row.status === "ended") {
-      const durSec = row.answeredAt && row.endedAt ? (row.endedAt - row.answeredAt) / 1000 : 0;
-      return formatDuration(durSec);
-    }
-    if (row.status === "rejected") return t("callRejectedHistory");
-    if (row.status === "missed") return iAmCaller ? t("noAnswerCall") : t("missedCall");
-    if (row.status === "unavailable") return t("callUnavailableHistory");
-    if (row.status === "busy") return t("callBusyHistory");
-    return t("calling");
-  }
 
   return (
     <div className="call-history-view">
@@ -74,26 +66,51 @@ export default function CallHistoryView({ callHistory, me, onCallBack }) {
       ) : (
         <div className="call-history-list">
           {callHistory.map((row) => {
-            const iAmCaller = row.caller === me;
-            const peer = iAmCaller ? row.callee : row.caller;
-            const missed = isMissedLike(row.status) && !iAmCaller;
+            const iAmStarter = row.starter === me;
+            const others = (row.participants || []).filter((p) => p.username !== me);
+            const isGroup = others.length > 1;
+            const other = others[0];
+
+            const wasConnected = row.status === "ended";
+            const missed = !iAmStarter && !wasConnected;
+
+            let label;
+            if (wasConnected) {
+              const joinedTimes = (row.participants || [])
+                .map((p) => p.joinedAt)
+                .filter(Boolean);
+              const start = joinedTimes.length ? Math.min(...joinedTimes) : row.startedAt;
+              const dur = row.endedAt ? (row.endedAt - start) / 1000 : 0;
+              label = formatDuration(dur);
+            } else if (!isGroup && other?.status === "declined") {
+              label = t("callRejectedHistory");
+            } else if (!isGroup && other?.status === "unavailable") {
+              label = t("callUnavailableHistory");
+            } else {
+              label = iAmStarter ? t("noAnswerCall") : t("missedCall");
+            }
+
+            const title = isGroup
+              ? t("groupCallLabel", { count: others.length + 1 })
+              : other?.username || "?";
+
             return (
               <button
                 key={row.id}
                 type="button"
                 className="call-history-row"
-                onClick={() => onCallBack(peer, row.callType)}
+                onClick={() => onCallBack(row.callType)}
               >
                 <div className="call-history-avatar">
-                  {(peer || "?").charAt(0).toUpperCase()}
+                  {isGroup ? <GroupIcon /> : (other?.username || "?").charAt(0).toUpperCase()}
                 </div>
                 <div className="call-history-info">
-                  <span className="call-history-peer">{peer}</span>
+                  <span className="call-history-peer">{title}</span>
                   <span className={`call-history-meta ${missed ? "missed" : ""}`}>
                     <span className={`call-history-direction ${missed ? "missed" : ""}`}>
-                      {iAmCaller ? <OutgoingIcon /> : <IncomingIcon />}
+                      {iAmStarter ? <OutgoingIcon /> : <IncomingIcon />}
                     </span>
-                    {labelFor(row)}
+                    {label}
                   </span>
                 </div>
                 <div className="call-history-right">
@@ -115,13 +132,20 @@ CallHistoryView.propTypes = {
   callHistory: PropTypes.arrayOf(
     PropTypes.shape({
       id: PropTypes.string.isRequired,
-      caller: PropTypes.string.isRequired,
-      callee: PropTypes.string.isRequired,
+      starter: PropTypes.string.isRequired,
       callType: PropTypes.string.isRequired,
       status: PropTypes.string.isRequired,
       startedAt: PropTypes.number,
-      answeredAt: PropTypes.number,
       endedAt: PropTypes.number,
+      participants: PropTypes.arrayOf(
+        PropTypes.shape({
+          username: PropTypes.string.isRequired,
+          role: PropTypes.string,
+          status: PropTypes.string,
+          joinedAt: PropTypes.number,
+          leftAt: PropTypes.number,
+        }),
+      ),
     }),
   ).isRequired,
   me: PropTypes.string.isRequired,

@@ -37,11 +37,18 @@ const {
   markReadForRoomExceptUser,
   markDeliveredForRoomExceptUser,
 
-  createCallHistory,
-  markCallAccepted,
-  markCallTerminal,
-  getCallHistoryById,
-  getCallHistoryForUser,
+  createCallSession,
+  addCallParticipant,
+  markParticipantJoined,
+  markParticipantStatus,
+  markCallSessionStatus,
+  getCallSessionById,
+  getCallHistoryRowById,
+  getCallHistoryForRoom,
+
+  addSticker,
+  getStickersForUser,
+  deleteSticker,
 
   upsertOtp,
   getOtp,
@@ -206,6 +213,30 @@ app.post("/api/upload", requireAuth, (req, res) => {
       size: req.file.size,
     });
   });
+});
+
+app.get("/api/stickers", requireAuth, (req, res) => {
+  return res.json(getStickersForUser(req.user.username));
+});
+
+app.post("/api/stickers", requireAuth, (req, res) => {
+  const { url, name } = req.body || {};
+  if (!url || typeof url !== "string") {
+    return res.status(400).json({ message: "Sticker URL is required" });
+  }
+  const sticker = addSticker({
+    id: randomUUID(),
+    ownerUsername: req.user.username,
+    url,
+    name: name || null,
+  });
+  return res.json(sticker);
+});
+
+app.delete("/api/stickers/:id", requireAuth, (req, res) => {
+  const removed = deleteSticker(req.params.id, req.user.username);
+  if (!removed) return res.status(404).json({ message: "Sticker not found" });
+  return res.json({ ok: true });
 });
 
 app.post("/api/rooms/create", (req, res) => {
@@ -483,8 +514,6 @@ io.use((socket, next) => {
 
 const roomUsers = new Map();
 const onlineSockets = new Map(); // username -> socket.id
-const activeCalls = new Map(); // username -> peerUsername
-const callHistoryByUser = new Map(); // username -> in-progress call_history row id
 const pendingLeaves = new Map(); // username -> timeout handle
 
 // How long to wait after a socket disconnects before treating the user as
@@ -494,6 +523,16 @@ const pendingLeaves = new Map(); // username -> timeout handle
 // never left and their call/RTCPeerConnection may still be alive.
 const DISCONNECT_GRACE_MS = 15000;
 
+// ── Group calls ──
+// One live call session per room at a time. A session tracks every invited
+// participant's status ('ringing'|'joined'|'declined'|'left') so the call
+// can keep going as long as 2+ people remain, ending only when it drops to
+// <=1 — see maybeEndCall().
+const MAX_CALL_PARTICIPANTS = 6;
+const activeCallSessions = new Map(); // callId -> CallSession
+const activeCallByUser = new Map(); // username -> callId
+const activeCallByRoom = new Map(); // room -> callId
+
 function emitUsers(room) {
   const users = Array.from(roomUsers.get(room) || []);
   io.to(room).emit("room:users", { room, users });
@@ -501,9 +540,24 @@ function emitUsers(room) {
 
 function emitCallHistoryUpdate(row) {
   if (!row) return;
-  [row.caller, row.callee].forEach((username) => {
-    const socketId = onlineSockets.get(username);
+  (row.participants || []).forEach((p) => {
+    const socketId = onlineSockets.get(p.username);
     if (socketId) io.to(socketId).emit("call:history:update", row);
+  });
+}
+
+function callSnapshot(session) {
+  return Array.from(session.participants.entries()).map(([username, p]) => ({
+    username,
+    status: p.status,
+  }));
+}
+
+function emitToParticipants(session, event, payload, { exclude } = {}) {
+  session.participants.forEach((p, username) => {
+    if (exclude && username === exclude) return;
+    const socketId = onlineSockets.get(username);
+    if (socketId) io.to(socketId).emit(event, payload);
   });
 }
 
@@ -559,7 +613,31 @@ io.on("connection", (socket) => {
       room: r,
       users: Array.from(roomUsers.get(r)),
     });
-    socket.emit("call:history", getCallHistoryForUser(u, 200));
+    socket.emit("call:history", getCallHistoryForRoom(r, 200));
+
+    // If a call is already in progress in this room, let the (re)joining
+    // user ring in on it too, whether or not they were originally invited.
+    const liveCallId = activeCallByRoom.get(r);
+    if (liveCallId) {
+      const session = activeCallSessions.get(liveCallId);
+      if (session && !session.participants.has(u)) {
+        session.participants.set(u, {
+          status: "ringing",
+          joinedAt: null,
+          leftAt: null,
+        });
+        addCallParticipant(liveCallId, u);
+      }
+      if (session) {
+        socket.emit("call:ring", {
+          callId: session.id,
+          room: r,
+          callType: session.callType,
+          from: session.starter,
+          participants: callSnapshot(session),
+        });
+      }
+    }
 
     // Any messages from the other participant that arrived while `u` was
     // offline are "delivered" the moment they reconnect and get history.
@@ -611,7 +689,8 @@ io.on("connection", (socket) => {
     ({ room, text, clientId, replyTo, attachment, type, voiceData }) => {
       const r =
         String(room || socket.data.room || "general").trim() || "general";
-      const msgType = type === "voice" ? "voice" : "text";
+      const msgType =
+        type === "voice" ? "voice" : type === "sticker" ? "sticker" : "text";
       const t = String(text || "").trim();
 
       let att = null;
@@ -627,6 +706,7 @@ io.on("connection", (socket) => {
       }
 
       if (msgType === "voice" && !voiceData) return;
+      if (msgType === "sticker" && !att) return;
       if (msgType === "text" && !t && !att) return;
 
       let replyToData = null;
@@ -762,151 +842,149 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("call:invite", ({ to, callType }) => {
-    const from = socket.user.username;
-    const target = String(to || "");
-    if (!target || target === from) return;
+  socket.on("call:start", ({ room, callType }) => {
+    const starter = socket.user.username;
+    const r = String(room || socket.data.room || "").trim();
+    if (!r) return;
     const type = callType === "video" ? "video" : "audio";
 
-    const targetSocketId = onlineSockets.get(target);
-    if (!targetSocketId) {
-      const id = randomUUID();
-      const now = Date.now();
-      createCallHistory({
-        id,
-        room: socket.data.room,
-        caller: from,
-        callee: target,
-        callType: type,
-        status: "unavailable",
-        startedAt: now,
-        endedAt: now,
-      });
-      emitCallHistoryUpdate(getCallHistoryById(id));
-      socket.emit("call:unavailable", { to: target });
+    const existingCallId = activeCallByRoom.get(r);
+    if (existingCallId) {
+      // A call is already live in this room — join it instead of ringing
+      // a brand-new session.
+      handleCallJoin(socket, existingCallId);
       return;
     }
 
-    if (activeCalls.has(from) || activeCalls.has(target)) {
-      const id = randomUUID();
-      const now = Date.now();
-      createCallHistory({
-        id,
-        room: socket.data.room,
-        caller: from,
-        callee: target,
-        callType: type,
-        status: "busy",
-        startedAt: now,
-        endedAt: now,
-      });
-      emitCallHistoryUpdate(getCallHistoryById(id));
-      socket.emit("call:busy", { to: target });
-      return;
-    }
+    const invitees = Array.from(roomUsers.get(r) || []).filter(
+      (u) => u !== starter && onlineSockets.has(u),
+    );
 
-    const historyId = randomUUID();
-    createCallHistory({
-      id: historyId,
-      room: socket.data.room,
-      caller: from,
-      callee: target,
+    const callId = randomUUID();
+    const session = {
+      id: callId,
+      room: r,
       callType: type,
-      status: "ringing",
+      starter,
       startedAt: Date.now(),
+      everActive: false,
+      participants: new Map(),
+    };
+    session.participants.set(starter, {
+      status: "joined",
+      joinedAt: session.startedAt,
+      leftAt: null,
     });
-    callHistoryByUser.set(from, historyId);
-    callHistoryByUser.set(target, historyId);
-    emitCallHistoryUpdate(getCallHistoryById(historyId));
+    invitees.forEach((u) =>
+      session.participants.set(u, { status: "ringing", joinedAt: null, leftAt: null }),
+    );
 
-    io.to(targetSocketId).emit("call:incoming", {
-      from,
+    activeCallSessions.set(callId, session);
+    activeCallByRoom.set(r, callId);
+    activeCallByUser.set(starter, callId);
+    invitees.forEach((u) => activeCallByUser.set(u, callId));
+
+    createCallSession({ id: callId, room: r, starter, callType: type });
+    invitees.forEach((u) => addCallParticipant(callId, u));
+    emitCallHistoryUpdate(getCallHistoryRowById(callId));
+
+    socket.emit("call:started", {
+      callId,
+      room: r,
       callType: type,
-      room: socket.data.room,
+      participants: callSnapshot(session),
+    });
+    invitees.forEach((u) => {
+      const sid = onlineSockets.get(u);
+      if (sid) {
+        io.to(sid).emit("call:ring", {
+          callId,
+          room: r,
+          callType: type,
+          from: starter,
+          participants: callSnapshot(session),
+        });
+      }
     });
   });
 
-  socket.on("call:accept", ({ to }) => {
-    const from = socket.user.username;
-    const target = String(to || "");
-    const targetSocketId = onlineSockets.get(target);
-    if (!targetSocketId) return;
-
-    activeCalls.set(from, target);
-    activeCalls.set(target, from);
-
-    const historyId = callHistoryByUser.get(from);
-    if (historyId) {
-      markCallAccepted(historyId);
-      emitCallHistoryUpdate(getCallHistoryById(historyId));
-    }
-
-    io.to(targetSocketId).emit("call:accepted", { from });
+  socket.on("call:join", ({ callId }) => {
+    handleCallJoin(socket, String(callId || ""));
   });
 
-  socket.on("call:reject", ({ to }) => {
-    const from = socket.user.username;
-    const target = String(to || "");
+  socket.on("call:decline", ({ callId }) => {
+    const username = socket.user.username;
+    const id = String(callId || "");
+    const session = activeCallSessions.get(id);
+    if (!session || !session.participants.has(username)) return;
 
-    const historyId = callHistoryByUser.get(from);
-    if (historyId) {
-      markCallTerminal(historyId, "rejected");
-      const row = getCallHistoryById(historyId);
-      callHistoryByUser.delete(from);
-      callHistoryByUser.delete(target);
-      emitCallHistoryUpdate(row);
-    }
+    session.participants.set(username, {
+      ...session.participants.get(username),
+      status: "declined",
+      leftAt: Date.now(),
+    });
+    if (activeCallByUser.get(username) === id) activeCallByUser.delete(username);
+    markParticipantStatus(id, username, "declined");
 
-    const targetSocketId = onlineSockets.get(target);
-    if (targetSocketId) io.to(targetSocketId).emit("call:rejected", { from });
+    emitCallHistoryUpdate(getCallHistoryRowById(id));
+    emitToParticipants(session, "call:participant-declined", { callId: id, username });
+    maybeEndCall(id);
   });
 
-  socket.on("call:offer", ({ to, offer }) => {
+  socket.on("call:leave", ({ callId }) => {
+    const username = socket.user.username;
+    const id = String(callId || "");
+    const session = activeCallSessions.get(id);
+    if (!session || !session.participants.has(username)) return;
+
+    session.participants.set(username, {
+      ...session.participants.get(username),
+      status: "left",
+      leftAt: Date.now(),
+    });
+    if (activeCallByUser.get(username) === id) activeCallByUser.delete(username);
+    markParticipantStatus(id, username, "left");
+
+    emitCallHistoryUpdate(getCallHistoryRowById(id));
+    emitToParticipants(session, "call:participant-left", {
+      callId: id,
+      username,
+      reason: "hangup",
+    });
+    maybeEndCall(id);
+  });
+
+  socket.on("call:offer", ({ callId, to, offer }) => {
+    if (!activeCallSessions.has(String(callId || ""))) return;
     const targetSocketId = onlineSockets.get(String(to || ""));
     if (targetSocketId)
       io.to(targetSocketId).emit("call:offer", {
+        callId,
         from: socket.user.username,
         offer,
       });
   });
 
-  socket.on("call:answer", ({ to, answer }) => {
+  socket.on("call:answer", ({ callId, to, answer }) => {
+    if (!activeCallSessions.has(String(callId || ""))) return;
     const targetSocketId = onlineSockets.get(String(to || ""));
     if (targetSocketId)
       io.to(targetSocketId).emit("call:answer", {
+        callId,
         from: socket.user.username,
         answer,
       });
   });
 
-  socket.on("call:ice-candidate", ({ to, candidate }) => {
+  socket.on("call:ice-candidate", ({ callId, to, candidate }) => {
+    if (!activeCallSessions.has(String(callId || ""))) return;
     const targetSocketId = onlineSockets.get(String(to || ""));
     if (targetSocketId)
       io.to(targetSocketId).emit("call:ice-candidate", {
+        callId,
         from: socket.user.username,
         candidate,
       });
-  });
-
-  socket.on("call:end", ({ to }) => {
-    const from = socket.user.username;
-    const target = String(to || "");
-
-    activeCalls.delete(from);
-    activeCalls.delete(target);
-
-    const historyId = callHistoryByUser.get(from);
-    if (historyId) {
-      const row = getCallHistoryById(historyId);
-      const finalStatus = row?.status === "accepted" ? "ended" : "missed";
-      markCallTerminal(historyId, finalStatus);
-      callHistoryByUser.delete(from);
-      callHistoryByUser.delete(target);
-      emitCallHistoryUpdate(getCallHistoryById(historyId));
-    }
-
-    const targetSocketId = onlineSockets.get(target);
-    if (targetSocketId) io.to(targetSocketId).emit("call:ended", { from });
   });
 
   socket.on("disconnect", () => {
@@ -934,31 +1012,97 @@ io.on("connection", (socket) => {
   });
 });
 
+// Shared by "call:join" and a "call:start" into a room that already has a
+// live call — both mean "add/mark this user as joined in this session".
+function handleCallJoin(socket, callId) {
+  const username = socket.user.username;
+  const session = activeCallSessions.get(callId);
+  if (!session) return;
+
+  const alreadyJoined = session.participants.get(username)?.status === "joined";
+  const joinedCount = Array.from(session.participants.values()).filter(
+    (p) => p.status === "joined",
+  ).length;
+  if (!alreadyJoined && joinedCount >= MAX_CALL_PARTICIPANTS) {
+    socket.emit("call:full", { callId });
+    return;
+  }
+
+  if (!session.participants.has(username)) {
+    addCallParticipant(callId, username);
+  }
+  session.participants.set(username, {
+    status: "joined",
+    joinedAt: Date.now(),
+    leftAt: null,
+  });
+  activeCallByUser.set(username, callId);
+  markParticipantJoined(callId, username);
+
+  const nowJoined = Array.from(session.participants.values()).filter(
+    (p) => p.status === "joined",
+  ).length;
+  if (nowJoined >= 2) session.everActive = true;
+
+  emitCallHistoryUpdate(getCallHistoryRowById(callId));
+  emitToParticipants(session, "call:participant-joined", {
+    callId,
+    username,
+    participants: callSnapshot(session),
+  });
+}
+
+// A call keeps going as long as 2+ participants remain joined (or are
+// still being rung) — it only fully ends once that drops to <=1.
+function maybeEndCall(callId) {
+  const session = activeCallSessions.get(callId);
+  if (!session) return;
+
+  const entries = Array.from(session.participants.values());
+  const joinedCount = entries.filter((p) => p.status === "joined").length;
+  const ringingCount = entries.filter((p) => p.status === "ringing").length;
+
+  if (joinedCount === 0 || (joinedCount === 1 && ringingCount === 0)) {
+    const finalStatus = session.everActive ? "ended" : "no-participants";
+    markCallSessionStatus(callId, finalStatus);
+    emitToParticipants(session, "call:ended", { callId, reason: finalStatus });
+
+    activeCallSessions.delete(callId);
+    if (activeCallByRoom.get(session.room) === callId) {
+      activeCallByRoom.delete(session.room);
+    }
+    session.participants.forEach((_, username) => {
+      if (activeCallByUser.get(username) === callId) {
+        activeCallByUser.delete(username);
+      }
+    });
+  }
+}
+
 function finalizeDisconnect(u, r, socketId) {
   if (onlineSockets.get(u) === socketId) {
     onlineSockets.delete(u);
   }
 
-  const peer = activeCalls.get(u);
-  if (peer) {
-    activeCalls.delete(u);
-    activeCalls.delete(peer);
-    const peerSocketId = onlineSockets.get(peer);
-    if (peerSocketId)
-      io.to(peerSocketId).emit("call:ended", {
-        from: u,
+  const callId = activeCallByUser.get(u);
+  if (callId) {
+    const session = activeCallSessions.get(callId);
+    if (session && session.participants.has(u)) {
+      session.participants.set(u, {
+        ...session.participants.get(u),
+        status: "left",
+        leftAt: Date.now(),
+      });
+      markParticipantStatus(callId, u, "left");
+      emitCallHistoryUpdate(getCallHistoryRowById(callId));
+      emitToParticipants(session, "call:participant-left", {
+        callId,
+        username: u,
         reason: "disconnect",
       });
-  }
-
-  const historyId = callHistoryByUser.get(u);
-  if (historyId) {
-    const row = getCallHistoryById(historyId);
-    const finalStatus = row?.status === "accepted" ? "ended" : "missed";
-    markCallTerminal(historyId, finalStatus);
-    callHistoryByUser.delete(row?.caller);
-    callHistoryByUser.delete(row?.callee);
-    emitCallHistoryUpdate(getCallHistoryById(historyId));
+      maybeEndCall(callId);
+    }
+    if (activeCallByUser.get(u) === callId) activeCallByUser.delete(u);
   }
 
   if (!r) return;
