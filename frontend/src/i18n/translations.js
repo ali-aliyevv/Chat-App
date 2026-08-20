@@ -77,6 +77,9 @@ export const translations = {
     cameraOn: "Kameranı aç",
     noOneToCall: "Otaqda zəng ediləcək başqa istifadəçi yoxdur",
     micDenied: "Mikrofona/kameraya icazə verilmədi",
+    callConnectFailed: "Zəng qoşulmadı, şəbəkəni yoxlayıb yenidən cəhd edin",
+    switchCamera: "Kameranı dəyiş",
+    noCameraAudioOnly: "Kamera tapılmadı, zəng səsli davam edir",
     voiceMessage: "Səs mesajı",
     recording: "Yazılır...",
     // Settings
@@ -164,6 +167,9 @@ export const translations = {
     cameraOn: "Turn on camera",
     noOneToCall: "No other user in the room to call",
     micDenied: "Microphone/camera permission denied",
+    callConnectFailed: "Call failed to connect, check your network and try again",
+    switchCamera: "Switch camera",
+    noCameraAudioOnly: "No camera found, continuing as audio-only",
     voiceMessage: "Voice message",
     recording: "Recording...",
     // Settings
@@ -251,6 +257,9 @@ export const translations = {
     cameraOn: "Включить камеру",
     noOneToCall: "В комнате нет другого пользователя для звонка",
     micDenied: "Доступ к микрофону/камере запрещён",
+    callConnectFailed: "Не удалось установить соединение, проверьте сеть и попробуйте снова",
+    switchCamera: "Переключить камеру",
+    noCameraAudioOnly: "Камера не найдена, звонок продолжается без видео",
     voiceMessage: "Голосовое сообщение",
     recording: "Запись...",
     // Settings

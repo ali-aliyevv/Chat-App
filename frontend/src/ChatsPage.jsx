@@ -1547,11 +1547,13 @@ const ChatsPage = ({ user, onLogout }) => {
         remoteStream={call.remoteStream}
         muted={call.muted}
         cameraOff={call.cameraOff}
+        canSwitchCamera={call.canSwitchCamera}
         onAccept={call.acceptCall}
         onReject={call.rejectCall}
         onEnd={call.endCall}
         onToggleMute={call.toggleMute}
         onToggleCamera={call.toggleCamera}
+        onSwitchCamera={call.switchCamera}
       />
     </div>
   );

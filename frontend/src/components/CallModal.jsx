@@ -46,6 +46,14 @@ const CameraOffIcon = () => (
   </svg>
 );
 
+const SwitchCameraIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20 17H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h3l1.5-2h7L17 7h3a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1z" />
+    <path d="M15.5 12.5 18 10M18 10l-2.5-2.5M18 10h-4" />
+    <circle cx="9.5" cy="12" r="2.3" />
+  </svg>
+);
+
 function formatDuration(startedAt) {
   if (!startedAt) return "00:00";
   const secs = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
@@ -60,11 +68,13 @@ export default function CallModal({
   remoteStream,
   muted,
   cameraOff,
+  canSwitchCamera,
   onAccept,
   onReject,
   onEnd,
   onToggleMute,
   onToggleCamera,
+  onSwitchCamera,
 }) {
   const { t } = useLanguage();
   const localVideoRef = useRef(null);
@@ -92,6 +102,11 @@ export default function CallModal({
   const isCalling = callState.status === "calling";
   const isConnecting = callState.status === "connecting";
   const isActive = callState.status === "active";
+  const hasLocalVideo = !!localStream && localStream.getVideoTracks().length > 0;
+  // Show the full video layout as soon as our own camera/mic are live
+  // (calling/connecting), not just once "active" — matches WhatsApp, and
+  // means the remote video appears immediately once it starts flowing.
+  const showVideoStage = isVideo && (isCalling || isConnecting || isActive);
 
   let statusLabel = "";
   if (isCalling) statusLabel = t("calling");
@@ -100,11 +115,13 @@ export default function CallModal({
 
   return (
     <div className="call-overlay">
-      <div className={`call-panel ${isVideo && isActive ? "video-mode" : ""}`}>
-        {isVideo && isActive ? (
+      <div className={`call-panel ${showVideoStage ? "video-mode" : ""}`}>
+        {showVideoStage ? (
           <>
             <video ref={remoteVideoRef} className="call-video-remote" autoPlay playsInline />
-            <video ref={localVideoRef} className="call-video-local" autoPlay playsInline muted />
+            {hasLocalVideo ? (
+              <video ref={localVideoRef} className="call-video-local" autoPlay playsInline muted />
+            ) : null}
           </>
         ) : (
           <>
@@ -125,7 +142,7 @@ export default function CallModal({
           </>
         )}
 
-        {isVideo && isActive ? (
+        {showVideoStage ? (
           <div className="call-video-overlay-info">
             <span className="call-peer-name">{callState.peer}</span>
             <span className="call-status-label">{statusLabel}</span>
@@ -154,6 +171,11 @@ export default function CallModal({
                       {cameraOff ? <CameraOffIcon /> : <CameraIcon />}
                     </button>
                   ) : null}
+                  {isVideo && hasLocalVideo && !cameraOff && canSwitchCamera ? (
+                    <button className="call-btn secondary" onClick={onSwitchCamera} title={t("switchCamera")}>
+                      <SwitchCameraIcon />
+                    </button>
+                  ) : null}
                 </>
               ) : null}
               <button className="call-btn decline" onClick={onEnd} title={t("endCall")}>
@@ -178,9 +200,11 @@ CallModal.propTypes = {
   remoteStream: PropTypes.object,
   muted: PropTypes.bool.isRequired,
   cameraOff: PropTypes.bool.isRequired,
+  canSwitchCamera: PropTypes.bool,
   onAccept: PropTypes.func.isRequired,
   onReject: PropTypes.func.isRequired,
   onEnd: PropTypes.func.isRequired,
   onToggleMute: PropTypes.func.isRequired,
   onToggleCamera: PropTypes.func.isRequired,
+  onSwitchCamera: PropTypes.func,
 };
