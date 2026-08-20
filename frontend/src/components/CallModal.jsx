@@ -80,14 +80,44 @@ export default function CallModal({
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const [, forceTick] = useState(0);
+  const [playbackBlocked, setPlaybackBlocked] = useState(false);
 
   useEffect(() => {
-    if (localVideoRef.current) localVideoRef.current.srcObject = localStream || null;
+    const el = localVideoRef.current;
+    if (!el) return;
+    el.srcObject = localStream || null;
+    if (localStream) el.play().catch(() => {});
   }, [localStream]);
 
   useEffect(() => {
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream || null;
+    const el = remoteVideoRef.current;
+    if (!el) return;
+    el.srcObject = remoteStream || null;
+    if (!remoteStream) {
+      setPlaybackBlocked(false);
+      return;
+    }
+    // Mobile browsers can block autoplay of an unmuted <video> (this one
+    // carries the call's remote audio) when it isn't tied closely enough
+    // to a user gesture — surface a tap-to-resume prompt instead of a
+    // silently blank/frozen call screen.
+    const playPromise = el.play();
+    if (playPromise && typeof playPromise.then === "function") {
+      playPromise.then(() => setPlaybackBlocked(false)).catch(() => setPlaybackBlocked(true));
+    }
   }, [remoteStream]);
+
+  const resumePlayback = () => {
+    const remote = remoteVideoRef.current;
+    const local = localVideoRef.current;
+    if (local) local.play().catch(() => {});
+    if (remote) {
+      remote
+        .play()
+        .then(() => setPlaybackBlocked(false))
+        .catch(() => setPlaybackBlocked(true));
+    }
+  };
 
   useEffect(() => {
     if (callState.status !== "active") return undefined;
@@ -147,6 +177,12 @@ export default function CallModal({
             <span className="call-peer-name">{callState.peer}</span>
             <span className="call-status-label">{statusLabel}</span>
           </div>
+        ) : null}
+
+        {playbackBlocked ? (
+          <button className="call-resume-playback" onClick={resumePlayback}>
+            {t("tapToResumeCall")}
+          </button>
         ) : null}
 
         <div className="call-controls">

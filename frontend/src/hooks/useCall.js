@@ -498,6 +498,48 @@ export function useCall() {
     resetToIdle,
   ]);
 
+  // Keep the screen awake while a call is ringing/connecting/active.
+  // Without this, mobile devices auto-lock mid-call, which suspends the
+  // page (freezing the video) and often trips a socket disconnect shortly
+  // after, ending the call as if the user had left.
+  useEffect(() => {
+    const shouldHold = ["ringing", "calling", "connecting", "active"].includes(
+      callState.status,
+    );
+    if (!shouldHold || !("wakeLock" in navigator)) return undefined;
+
+    let wakeLock = null;
+    let released = false;
+
+    const acquire = async () => {
+      try {
+        const lock = await navigator.wakeLock.request("screen");
+        if (released) {
+          lock.release().catch(() => {});
+          return;
+        }
+        wakeLock = lock;
+      } catch {
+        /* not supported, or denied outside a user gesture — ignore */
+      }
+    };
+    acquire();
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible" && !wakeLock) acquire();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      released = true;
+      document.removeEventListener("visibilitychange", onVisibility);
+      if (wakeLock) {
+        wakeLock.release().catch(() => {});
+        wakeLock = null;
+      }
+    };
+  }, [callState.status]);
+
   useEffect(() => {
     return () => {
       const cs = callStateRef.current;

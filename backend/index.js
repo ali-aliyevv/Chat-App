@@ -438,6 +438,15 @@ app.get("/api/me", optionalAuth, (req, res) => {
 const io = new Server(server, {
   cors: { origin: FRONTEND_ORIGIN, credentials: true },
   maxHttpBufferSize: 5e6,
+  // Mobile browsers routinely suspend JS/networking for tens of seconds
+  // when a tab is backgrounded (screen lock, app switch) without the user
+  // actually leaving. Generous ping timings plus connection state recovery
+  // let a socket survive that instead of tripping "disconnect" every time.
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  connectionStateRecovery: {
+    maxDisconnectionDuration: 2 * 60 * 1000,
+  },
 });
 
 function parseCookies(cookieHeader) {
@@ -468,6 +477,14 @@ io.use((socket, next) => {
 const roomUsers = new Map();
 const onlineSockets = new Map(); // username -> socket.id
 const activeCalls = new Map(); // username -> peerUsername
+const pendingLeaves = new Map(); // username -> timeout handle
+
+// How long to wait after a socket disconnects before treating the user as
+// actually gone (ending their call, posting "left", dropping them from the
+// room). Covers brief network blips and mobile backgrounding/screen-lock,
+// which otherwise trip a disconnect within seconds even though the user
+// never left and their call/RTCPeerConnection may still be alive.
+const DISCONNECT_GRACE_MS = 15000;
 
 function emitUsers(room) {
   const users = Array.from(roomUsers.get(room) || []);
@@ -481,6 +498,12 @@ io.on("connection", (socket) => {
 
     socket.data.room = r;
     socket.join(r);
+
+    const wasPendingLeave = pendingLeaves.has(u);
+    if (wasPendingLeave) {
+      clearTimeout(pendingLeaves.get(u));
+      pendingLeaves.delete(u);
+    }
 
     if (!roomUsers.has(r)) roomUsers.set(r, new Set());
     roomUsers.get(r).add(u);
@@ -521,23 +544,27 @@ io.on("connection", (socket) => {
       users: Array.from(roomUsers.get(r)),
     });
 
-    // NOTE: "text" is an English fallback for old clients / old DB rows.
-    // New clients should use systemKey + systemUser and translate locally
-    // via translations.js -> userJoined / userLeft.
-    const sysMsg = {
-      id: randomUUID(),
-      room: r,
-      clientId: null,
-      username: null,
-      text: `${u} joined`,
-      systemKey: "userJoined",
-      systemUser: u,
-      system: true,
-      createdAt: Date.now(),
-    };
+    // A resumed session (reconnect within the disconnect grace period)
+    // never actually "left", so don't spam the room with join/leave noise.
+    if (!wasPendingLeave) {
+      // NOTE: "text" is an English fallback for old clients / old DB rows.
+      // New clients should use systemKey + systemUser and translate locally
+      // via translations.js -> userJoined / userLeft.
+      const sysMsg = {
+        id: randomUUID(),
+        room: r,
+        clientId: null,
+        username: null,
+        text: `${u} joined`,
+        systemKey: "userJoined",
+        systemUser: u,
+        system: true,
+        createdAt: Date.now(),
+      };
 
-    addMessage(sysMsg);
-    io.to(r).emit("message:new", sysMsg);
+      addMessage(sysMsg);
+      io.to(r).emit("message:new", sysMsg);
+    }
     emitUsers(r);
   });
 
@@ -767,30 +794,52 @@ io.on("connection", (socket) => {
     const u = socket.user?.username;
     if (!u) return;
 
-    if (onlineSockets.get(u) === socket.id) {
-      onlineSockets.delete(u);
-    }
+    // A stale socket for a user who already reconnected on a newer one
+    // must not tear down their current session.
+    if (onlineSockets.get(u) !== socket.id) return;
 
-    const peer = activeCalls.get(u);
-    if (peer) {
-      activeCalls.delete(u);
-      activeCalls.delete(peer);
-      const peerSocketId = onlineSockets.get(peer);
-      if (peerSocketId)
-        io.to(peerSocketId).emit("call:ended", {
-          from: u,
-          reason: "disconnect",
-        });
-    }
+    const existingTimer = pendingLeaves.get(u);
+    if (existingTimer) clearTimeout(existingTimer);
 
-    if (!r) return;
+    const timer = setTimeout(() => {
+      pendingLeaves.delete(u);
+      // The user reconnected (same or new socket) during the grace
+      // window — nothing to clean up.
+      if (onlineSockets.get(u) !== socket.id) return;
 
-    const set = roomUsers.get(r);
-    if (set) {
-      set.delete(u);
-      if (set.size === 0) roomUsers.delete(r);
-    }
+      finalizeDisconnect(u, r, socket.id);
+    }, DISCONNECT_GRACE_MS);
 
+    pendingLeaves.set(u, timer);
+  });
+});
+
+function finalizeDisconnect(u, r, socketId) {
+  if (onlineSockets.get(u) === socketId) {
+    onlineSockets.delete(u);
+  }
+
+  const peer = activeCalls.get(u);
+  if (peer) {
+    activeCalls.delete(u);
+    activeCalls.delete(peer);
+    const peerSocketId = onlineSockets.get(peer);
+    if (peerSocketId)
+      io.to(peerSocketId).emit("call:ended", {
+        from: u,
+        reason: "disconnect",
+      });
+  }
+
+  if (!r) return;
+
+  const set = roomUsers.get(r);
+  if (set) {
+    set.delete(u);
+    if (set.size === 0) roomUsers.delete(r);
+  }
+
+  {
     // NOTE: "text" is an English fallback; new clients should use
     // systemKey + systemUser and translate locally.
     const sysMsg = {
@@ -808,8 +857,8 @@ io.on("connection", (socket) => {
     addMessage(sysMsg);
     io.to(r).emit("message:new", sysMsg);
     emitUsers(r);
-  });
-});
+  }
+}
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () =>

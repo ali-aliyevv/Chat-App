@@ -80,6 +80,7 @@ export const translations = {
     callConnectFailed: "Zəng qoşulmadı, şəbəkəni yoxlayıb yenidən cəhd edin",
     switchCamera: "Kameranı dəyiş",
     noCameraAudioOnly: "Kamera tapılmadı, zəng səsli davam edir",
+    tapToResumeCall: "Davam etmək üçün toxunun",
     voiceMessage: "Səs mesajı",
     recording: "Yazılır...",
     // Settings
@@ -170,6 +171,7 @@ export const translations = {
     callConnectFailed: "Call failed to connect, check your network and try again",
     switchCamera: "Switch camera",
     noCameraAudioOnly: "No camera found, continuing as audio-only",
+    tapToResumeCall: "Tap to resume",
     voiceMessage: "Voice message",
     recording: "Recording...",
     // Settings
@@ -260,6 +262,7 @@ export const translations = {
     callConnectFailed: "Не удалось установить соединение, проверьте сеть и попробуйте снова",
     switchCamera: "Переключить камеру",
     noCameraAudioOnly: "Камера не найдена, звонок продолжается без видео",
+    tapToResumeCall: "Нажмите, чтобы продолжить",
     voiceMessage: "Голосовое сообщение",
     recording: "Запись...",
     // Settings
