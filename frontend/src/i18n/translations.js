@@ -83,6 +83,21 @@ export const translations = {
     tapToResumeCall: "Davam etmək üçün toxunun",
     voiceMessage: "Səs mesajı",
     recording: "Yazılır...",
+    // Call history
+    chatsTab: "Söhbət",
+    callsTab: "Zənglər",
+    missedCall: "Buraxılmış zəng",
+    noAnswerCall: "Cavab verilmədi",
+    callRejectedHistory: "Rədd edildi",
+    callUnavailableHistory: "Uyğun deyil",
+    callBusyHistory: "Məşğul idi",
+    callHistoryEmpty: "Zəng tarixçəsi yoxdur",
+    // Message info
+    messageInfo: "Mesaj məlumatı",
+    sentAt: "Göndərildi",
+    deliveredAt: "Çatdı",
+    notDeliveredYet: "Hələ çatmayıb",
+    notReadYet: "Hələ oxunmayıb",
     // Settings
     language: "Dil",
     theme: "Tema",
@@ -174,6 +189,21 @@ export const translations = {
     tapToResumeCall: "Tap to resume",
     voiceMessage: "Voice message",
     recording: "Recording...",
+    // Call history
+    chatsTab: "Chats",
+    callsTab: "Calls",
+    missedCall: "Missed call",
+    noAnswerCall: "No answer",
+    callRejectedHistory: "Declined",
+    callUnavailableHistory: "Unavailable",
+    callBusyHistory: "Was busy",
+    callHistoryEmpty: "No call history",
+    // Message info
+    messageInfo: "Message info",
+    sentAt: "Sent",
+    deliveredAt: "Delivered",
+    notDeliveredYet: "Not delivered yet",
+    notReadYet: "Not read yet",
     // Settings
     language: "Language",
     theme: "Theme",
@@ -265,7 +295,22 @@ export const translations = {
     tapToResumeCall: "Нажмите, чтобы продолжить",
     voiceMessage: "Голосовое сообщение",
     recording: "Запись...",
-    // Settings
+    // Call history
+    chatsTab: "Чаты",
+    callsTab: "Звонки",
+    missedCall: "Пропущенный звонок",
+    noAnswerCall: "Нет ответа",
+    callRejectedHistory: "Отклонён",
+    callUnavailableHistory: "Недоступен",
+    callBusyHistory: "Был занят",
+    callHistoryEmpty: "История звонков пуста",
+    // Message info
+    messageInfo: "Информация о сообщении",
+    sentAt: "Отправлено",
+    deliveredAt: "Доставлено",
+    notDeliveredYet: "Ещё не доставлено",
+    notReadYet: "Ещё не прочитано",
+     // Settings
     language: "Язык",
     theme: "Тема",
     darkTheme: "Тёмная",

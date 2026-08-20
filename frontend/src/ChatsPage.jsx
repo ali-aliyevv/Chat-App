@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -13,8 +12,10 @@ import { api } from "./api";
 import { useLanguage } from "./context/LanguageContext";
 import { useCall } from "./hooks/useCall";
 import { useTheme } from "./context/ThemeContext";
+import { useViewportClamp } from "./hooks/useViewportClamp";
 import SettingsBar from "./components/SettingsBar";
 import CallModal from "./components/CallModal";
+import CallHistoryView from "./components/CallHistoryView";
 import "./style/ChatsPage.css";
 
 function formatTime(createdAt) {
@@ -121,6 +122,21 @@ const CallVideoIcon = () => (
   >
     <polygon points="23 7 16 12 23 17 23 7" />
     <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+  </svg>
+);
+
+const ReplyIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="9 17 4 12 9 7" />
+    <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
+  </svg>
+);
+
+const InfoIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" />
+    <line x1="12" y1="16" x2="12" y2="12" />
+    <line x1="12" y1="8" x2="12.01" y2="8" />
   </svg>
 );
 
@@ -249,9 +265,24 @@ const ChatsPage = ({ user, onLogout }) => {
 
   const [contextMenu, setContextMenu] = useState(null);
   const contextMenuRef = useRef(null);
+  const [infoPopover, setInfoPopover] = useState(null);
+  const infoPopoverRef = useRef(null);
   const longPressTimerRef = useRef(null);
   const longPressStartPosRef = useRef({ x: 0, y: 0 });
   const suppressNextCloseRef = useRef(false);
+  const swipeStateRef = useRef({
+    active: false,
+    msgId: null,
+    startX: 0,
+    startY: 0,
+    decided: false,
+    horizontal: false,
+    dx: 0,
+  });
+  const msgRowRefs = useRef(new Map());
+
+  const [activeTab, setActiveTab] = useState("chat");
+  const [callHistory, setCallHistory] = useState([]);
 
   const [editingMessage, setEditingMessage] = useState(null);
 
@@ -263,6 +294,7 @@ const ChatsPage = ({ user, onLogout }) => {
   const call = useCall();
   /* ── Emoji picker state ── */
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [emojiPickerWidth, setEmojiPickerWidth] = useState(320);
   const emojiPickerRef = useRef(null);
 
   /* ── Voice recording state ── */
@@ -384,6 +416,7 @@ const ChatsPage = ({ user, onLogout }) => {
         return;
       }
       setContextMenu(null);
+      setInfoPopover(null);
     };
     document.addEventListener("click", close);
     document.addEventListener("scroll", close, true);
@@ -393,26 +426,8 @@ const ChatsPage = ({ user, onLogout }) => {
     };
   }, []);
 
-  // Keep the menu fully on-screen — the raw tap/click coordinates it opens
-  // at can sit right against a phone's screen edge.
-  useLayoutEffect(() => {
-    if (!contextMenu) return;
-    const el = contextMenuRef.current;
-    if (!el) return;
-    const margin = 8;
-    const rect = el.getBoundingClientRect();
-    const x = Math.min(
-      contextMenu.x,
-      Math.max(margin, window.innerWidth - rect.width - margin),
-    );
-    const y = Math.min(
-      contextMenu.y,
-      Math.max(margin, window.innerHeight - rect.height - margin),
-    );
-    if (x !== contextMenu.x || y !== contextMenu.y) {
-      setContextMenu((cm) => (cm ? { ...cm, x, y } : cm));
-    }
-  }, [contextMenu]);
+  useViewportClamp(contextMenuRef, contextMenu, setContextMenu);
+  useViewportClamp(infoPopoverRef, infoPopover, setInfoPopover);
 
   useEffect(() => {
     let mounted = true;
@@ -566,6 +581,40 @@ const ChatsPage = ({ user, onLogout }) => {
       );
     };
 
+    const onDeliveredReceipt = ({ deliveredUpTo, deliveredAt }) => {
+      if (!mounted || !deliveredUpTo) return;
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.system || m.username !== me || m.deliveredAt) return m;
+          const mt =
+            typeof m.createdAt === "number"
+              ? m.createdAt
+              : Date.parse(m.createdAt || 0);
+          if ((mt || 0) <= deliveredUpTo) {
+            return { ...m, deliveredAt: deliveredAt || Date.now() };
+          }
+          return m;
+        }),
+      );
+    };
+
+    const onCallHistory = (rows) => {
+      if (!mounted) return;
+      setCallHistory(Array.isArray(rows) ? rows : []);
+    };
+
+    const onCallHistoryUpdate = (row) => {
+      if (!mounted || !row?.id) return;
+      setCallHistory((prev) => {
+        const idx = prev.findIndex((r) => r.id === row.id);
+        const next =
+          idx === -1
+            ? [row, ...prev]
+            : prev.map((r) => (r.id === row.id ? row : r));
+        return next.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+      });
+    };
+
     const onMessageEdited = ({ messageId, newText, editedAt }) => {
       if (!mounted) return;
       setMessages((prev) =>
@@ -636,8 +685,11 @@ const ChatsPage = ({ user, onLogout }) => {
     socket.off("typing");
     socket.off("message:delivered");
     socket.off("message:seen");
+    socket.off("message:deliveredReceipt");
     socket.off("message:edited");
     socket.off("message:deleted");
+    socket.off("call:history");
+    socket.off("call:history:update");
     socket.off("connect");
     socket.off("connect_error");
 
@@ -648,8 +700,11 @@ const ChatsPage = ({ user, onLogout }) => {
     socket.on("typing", onTyping);
     socket.on("message:delivered", onDelivered);
     socket.on("message:seen", onSeen);
+    socket.on("message:deliveredReceipt", onDeliveredReceipt);
     socket.on("message:edited", onMessageEdited);
     socket.on("message:deleted", onMessageDeleted);
+    socket.on("call:history", onCallHistory);
+    socket.on("call:history:update", onCallHistoryUpdate);
     socket.on("connect", onConnect);
     socket.on("connect_error", onConnectError);
 
@@ -666,8 +721,11 @@ const ChatsPage = ({ user, onLogout }) => {
       socket.off("typing", onTyping);
       socket.off("message:delivered", onDelivered);
       socket.off("message:seen", onSeen);
+      socket.off("message:deliveredReceipt", onDeliveredReceipt);
       socket.off("message:edited", onMessageEdited);
       socket.off("message:deleted", onMessageDeleted);
+      socket.off("call:history", onCallHistory);
+      socket.off("call:history:update", onCallHistoryUpdate);
       socket.off("connect", onConnect);
       socket.off("connect_error", onConnectError);
 
@@ -719,6 +777,16 @@ const ChatsPage = ({ user, onLogout }) => {
       if (!touch) return;
       longPressStartPosRef.current = { x: touch.clientX, y: touch.clientY };
 
+      swipeStateRef.current = {
+        active: true,
+        msgId: msg.id,
+        startX: touch.clientX,
+        startY: touch.clientY,
+        decided: false,
+        horizontal: false,
+        dx: 0,
+      };
+
       clearLongPress();
       longPressTimerRef.current = setTimeout(() => {
         longPressTimerRef.current = null;
@@ -730,24 +798,127 @@ const ChatsPage = ({ user, onLogout }) => {
     [canOpenMenuFor, clearLongPress],
   );
 
+  const SWIPE_MAX = 90;
+  const SWIPE_THRESHOLD = 64;
+
   const handleTouchMove = useCallback(
-    (e) => {
+    (e, msg) => {
       const touch = e.touches[0];
       if (!touch) return;
-      const dx = touch.clientX - longPressStartPosRef.current.x;
-      const dy = touch.clientY - longPressStartPosRef.current.y;
-      if (Math.hypot(dx, dy) > 10) clearLongPress();
+      const dx0 = touch.clientX - longPressStartPosRef.current.x;
+      const dy0 = touch.clientY - longPressStartPosRef.current.y;
+      if (Math.hypot(dx0, dy0) > 10) clearLongPress();
+
+      const s = swipeStateRef.current;
+      if (!s.active || s.msgId !== msg.id) return;
+      const dx = touch.clientX - s.startX;
+      const dy = touch.clientY - s.startY;
+
+      if (!s.decided) {
+        if (Math.hypot(dx, dy) < 10) return;
+        s.decided = true;
+        s.horizontal = Math.abs(dx) > Math.abs(dy) * 1.3;
+      }
+      if (!s.horizontal) return;
+
+      s.dx = dx;
+      const el = msgRowRefs.current.get(msg.id);
+      if (el) {
+        const clamped = Math.max(-SWIPE_MAX, Math.min(SWIPE_MAX, dx));
+        el.style.transition = "none";
+        el.style.transform = `translateX(${clamped}px)`;
+
+        const isMine = !msg.system && msg.username === me;
+        const action = isMine
+          ? dx < 0
+            ? "reply"
+            : "info"
+          : dx > 0
+            ? "reply"
+            : "info";
+        const intensity = String(Math.min(1, Math.abs(clamped) / SWIPE_THRESHOLD));
+        const row = el.closest(".msg");
+        const replyIcon = row?.querySelector(".msg-swipe-icon.reply");
+        const infoIcon = row?.querySelector(".msg-swipe-icon.info");
+        if (replyIcon) replyIcon.style.opacity = action === "reply" ? intensity : "0";
+        if (infoIcon) infoIcon.style.opacity = action === "info" ? intensity : "0";
+      }
     },
-    [clearLongPress],
+    [clearLongPress, me],
+  );
+
+  const getSwipeAction = useCallback((isMine, dx) => {
+    if (isMine) return dx < 0 ? "reply" : "info";
+    return dx > 0 ? "reply" : "info";
+  }, []);
+
+  const openMessageInfo = useCallback((msg, x, y) => {
+    setInfoPopover({ x, y, message: msg });
+  }, []);
+
+  const replyToMessage = useCallback((msg) => {
+    setReplyingTo({ id: msg.id, username: msg.username, text: msg.text });
+    inputRef.current?.focus();
+  }, []);
+
+  const handleSwipeEnd = useCallback(
+    (msg) => {
+      clearLongPress();
+      const s = swipeStateRef.current;
+      const el = msgRowRefs.current.get(msg.id);
+
+      if (s.active && s.msgId === msg.id && s.horizontal) {
+        if (Math.abs(s.dx) > SWIPE_THRESHOLD) {
+          const isMine = !msg.system && msg.username === me;
+          const action = getSwipeAction(isMine, s.dx);
+          if (action === "reply") {
+            replyToMessage(msg);
+          } else {
+            const rect = el?.getBoundingClientRect();
+            openMessageInfo(
+              msg,
+              rect ? rect.left + rect.width / 2 : 0,
+              rect ? rect.top : 0,
+            );
+          }
+        }
+      }
+
+      if (el) {
+        el.style.transition = "transform 0.2s ease";
+        el.style.transform = "translateX(0)";
+        const row = el.closest(".msg");
+        row?.querySelectorAll(".msg-swipe-icon").forEach((icon) => {
+          icon.style.opacity = "0";
+        });
+        setTimeout(() => {
+          el.style.transition = "";
+        }, 220);
+      }
+      swipeStateRef.current = {
+        active: false,
+        msgId: null,
+        startX: 0,
+        startY: 0,
+        decided: false,
+        horizontal: false,
+        dx: 0,
+      };
+    },
+    [clearLongPress, me, getSwipeAction, replyToMessage, openMessageInfo],
   );
 
   const handleReply = useCallback(() => {
     if (!contextMenu?.message) return;
-    const m = contextMenu.message;
-    setReplyingTo({ id: m.id, username: m.username, text: m.text });
+    replyToMessage(contextMenu.message);
     setContextMenu(null);
-    inputRef.current?.focus();
-  }, [contextMenu]);
+  }, [contextMenu, replyToMessage]);
+
+  const handleShowInfo = useCallback(() => {
+    if (!contextMenu?.message) return;
+    openMessageInfo(contextMenu.message, contextMenu.x, contextMenu.y);
+    setContextMenu(null);
+  }, [contextMenu, openMessageInfo]);
 
   const handleStartEdit = useCallback(() => {
     if (!contextMenu?.message) return;
@@ -1169,6 +1340,34 @@ const ChatsPage = ({ user, onLogout }) => {
           <div className="call-toast-banner">{callErrorMsg}</div>
         ) : null}
 
+        <div className="chat-tabs">
+          <button
+            type="button"
+            className={`chat-tab ${activeTab === "chat" ? "active" : ""}`}
+            onClick={() => setActiveTab("chat")}
+          >
+            {t("chatsTab")}
+          </button>
+          <button
+            type="button"
+            className={`chat-tab ${activeTab === "calls" ? "active" : ""}`}
+            onClick={() => setActiveTab("calls")}
+          >
+            {t("callsTab")}
+          </button>
+        </div>
+
+        {activeTab === "calls" ? (
+          <CallHistoryView
+            callHistory={callHistory}
+            me={me}
+            onCallBack={(peer, callType) => {
+              setActiveTab("chat");
+              call.startCall(peer, callType);
+            }}
+          />
+        ) : (
+          <>
         <div className="chat-body">
           <aside className="chat-users">
             <div className="chat-users-title">{t("online")}</div>
@@ -1209,10 +1408,24 @@ const ChatsPage = ({ user, onLogout }) => {
                   className={`msg ${m.system ? "system" : isMine ? "mine" : "theirs"}`}
                   onContextMenu={(e) => handleContextMenu(e, m)}
                   onTouchStart={(e) => handleTouchStart(e, m)}
-                  onTouchMove={handleTouchMove}
-                  onTouchEnd={clearLongPress}
-                  onTouchCancel={clearLongPress}
+                  onTouchMove={(e) => handleTouchMove(e, m)}
+                  onTouchEnd={() => handleSwipeEnd(m)}
+                  onTouchCancel={() => handleSwipeEnd(m)}
                 >
+                  {!m.system && !isDeleted ? (
+                    <>
+                      <span
+                        className={`msg-swipe-icon reply ${isMine ? "side-right" : "side-left"}`}
+                      >
+                        <ReplyIcon />
+                      </span>
+                      <span
+                        className={`msg-swipe-icon info ${isMine ? "side-left" : "side-right"}`}
+                      >
+                        <InfoIcon />
+                      </span>
+                    </>
+                  ) : null}
                   {!m.system ? (
                     <div className="msg-user">
                       <span>{m.username}</span>
@@ -1232,7 +1445,13 @@ const ChatsPage = ({ user, onLogout }) => {
                     </div>
                   ) : null}
 
-                  <div className={`msg-bubble ${isDeleted ? "deleted" : ""}`}>
+                  <div
+                    className={`msg-bubble ${isDeleted ? "deleted" : ""}`}
+                    ref={(el) => {
+                      if (el) msgRowRefs.current.set(m.id, el);
+                      else msgRowRefs.current.delete(m.id);
+                    }}
+                  >
                     {m.replyToData && !isDeleted ? (
                       <div className="msg-reply-preview">
                         <span className="msg-reply-username">
@@ -1499,7 +1718,10 @@ const ChatsPage = ({ user, onLogout }) => {
               <div className="emoji-picker-wrapper" ref={emojiPickerRef}>
                 <button
                   className="chat-icon-btn"
-                  onClick={() => setShowEmojiPicker((p) => !p)}
+                  onClick={() => {
+                    setEmojiPickerWidth(Math.min(320, window.innerWidth - 24));
+                    setShowEmojiPicker((p) => !p);
+                  }}
                   type="button"
                   aria-label="Emoji"
                 >
@@ -1522,8 +1744,9 @@ const ChatsPage = ({ user, onLogout }) => {
                 {showEmojiPicker ? (
                   <div className="emoji-picker-popover">
                     <EmojiPicker
+                      key={emojiPickerWidth}
                       onEmojiClick={onEmojiClick}
-                      width={320}
+                      width={emojiPickerWidth}
                       height={400}
                       searchDisabled={false}
                       skinTonesDisabled
@@ -1566,6 +1789,8 @@ const ChatsPage = ({ user, onLogout }) => {
             </>
           )}
         </div>
+          </>
+        )}
       </div>
 
       {contextMenu ? (
@@ -1590,6 +1815,11 @@ const ChatsPage = ({ user, onLogout }) => {
               <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
             </svg>
             {t("reply")}
+          </button>
+
+          <button className="context-menu-item" onClick={handleShowInfo}>
+            <InfoIcon />
+            {t("messageInfo")}
           </button>
 
           {contextMenu.message.username === me &&
@@ -1652,6 +1882,39 @@ const ChatsPage = ({ user, onLogout }) => {
               {t("deleteForEveryone")}
             </button>
           ) : null}
+        </div>
+      ) : null}
+
+      {infoPopover ? (
+        <div
+          ref={infoPopoverRef}
+          className="context-menu msg-info-popover"
+          style={{ top: infoPopover.y, left: infoPopover.x }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="msg-info-title">{t("messageInfo")}</div>
+          <div className="msg-info-row">
+            <span className="msg-info-label">{t("sentAt")}</span>
+            <span className="msg-info-value">
+              {formatTime(infoPopover.message.createdAt) || "—"}
+            </span>
+          </div>
+          <div className="msg-info-row">
+            <span className="msg-info-label">{t("deliveredAt")}</span>
+            <span className="msg-info-value">
+              {infoPopover.message.deliveredAt
+                ? formatTime(infoPopover.message.deliveredAt)
+                : t("notDeliveredYet")}
+            </span>
+          </div>
+          <div className="msg-info-row">
+            <span className="msg-info-label">{t("read")}</span>
+            <span className="msg-info-value">
+              {infoPopover.message.readAt
+                ? formatTime(infoPopover.message.readAt)
+                : t("notReadYet")}
+            </span>
+          </div>
         </div>
       ) : null}
 

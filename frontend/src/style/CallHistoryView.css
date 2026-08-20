@@ -1,0 +1,121 @@
+.call-history-view {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 14px 16px;
+}
+
+.call-history-empty {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--chat-subtitle-color);
+  font-size: 14px;
+  text-align: center;
+  padding: 24px;
+}
+
+.call-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.call-history-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 8px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+  color: inherit;
+  font: inherit;
+}
+
+.call-history-row:hover {
+  background: var(--chat-user-bg);
+}
+
+.call-history-avatar {
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 900;
+  color: #0b0f1a;
+  background: linear-gradient(135deg, #ffb000, #ff3d00 55%, #ff00aa);
+}
+
+.call-history-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.call-history-peer {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--chat-title-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.call-history-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--chat-subtitle-color);
+}
+
+.call-history-meta.missed {
+  color: var(--chat-ctx-delete);
+}
+
+.call-history-direction {
+  display: flex;
+  color: #22c55e;
+}
+
+.call-history-direction.missed {
+  color: var(--chat-ctx-delete);
+}
+
+.call-history-right {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  color: var(--chat-subtitle-color);
+}
+
+.call-history-type-icon {
+  display: flex;
+  opacity: 0.75;
+}
+
+.call-history-time {
+  font-size: 11.5px;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+@media (max-width: 860px) {
+  .call-history-view {
+    padding: 8px 10px 14px;
+  }
+}

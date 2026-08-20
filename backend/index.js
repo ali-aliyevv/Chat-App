@@ -35,6 +35,13 @@ const {
   deleteMessageForUser,
   getDeletedMessageIdsForUser,
   markReadForRoomExceptUser,
+  markDeliveredForRoomExceptUser,
+
+  createCallHistory,
+  markCallAccepted,
+  markCallTerminal,
+  getCallHistoryById,
+  getCallHistoryForUser,
 
   upsertOtp,
   getOtp,
@@ -477,6 +484,7 @@ io.use((socket, next) => {
 const roomUsers = new Map();
 const onlineSockets = new Map(); // username -> socket.id
 const activeCalls = new Map(); // username -> peerUsername
+const callHistoryByUser = new Map(); // username -> in-progress call_history row id
 const pendingLeaves = new Map(); // username -> timeout handle
 
 // How long to wait after a socket disconnects before treating the user as
@@ -489,6 +497,14 @@ const DISCONNECT_GRACE_MS = 15000;
 function emitUsers(room) {
   const users = Array.from(roomUsers.get(room) || []);
   io.to(room).emit("room:users", { room, users });
+}
+
+function emitCallHistoryUpdate(row) {
+  if (!row) return;
+  [row.caller, row.callee].forEach((username) => {
+    const socketId = onlineSockets.get(username);
+    if (socketId) io.to(socketId).emit("call:history:update", row);
+  });
 }
 
 io.on("connection", (socket) => {
@@ -543,6 +559,28 @@ io.on("connection", (socket) => {
       room: r,
       users: Array.from(roomUsers.get(r)),
     });
+    socket.emit("call:history", getCallHistoryForUser(u, 200));
+
+    // Any messages from the other participant that arrived while `u` was
+    // offline are "delivered" the moment they reconnect and get history.
+    const { deliveredAt, changed } = markDeliveredForRoomExceptUser(
+      r,
+      u,
+      Date.now(),
+    );
+    if (changed) {
+      const otherUser = Array.from(roomUsers.get(r) || []).find(
+        (x) => x !== u,
+      );
+      const otherSocketId = otherUser && onlineSockets.get(otherUser);
+      if (otherSocketId) {
+        io.to(otherSocketId).emit("message:deliveredReceipt", {
+          room: r,
+          deliveredUpTo: Date.now(),
+          deliveredAt,
+        });
+      }
+    }
 
     // A resumed session (reconnect within the disconnect grace period)
     // never actually "left", so don't spam the room with join/leave noise.
@@ -619,6 +657,7 @@ io.on("connection", (socket) => {
         editedAt: null,
         deletedForAll: 0,
         readAt: null,
+        deliveredAt: null,
         attachmentUrl: att?.url || null,
         attachmentName: att?.name || null,
         attachmentType: att?.type || null,
@@ -628,6 +667,19 @@ io.on("connection", (socket) => {
       };
 
       addMessage({ ...msg, attachment: att });
+
+      const otherUser = Array.from(roomUsers.get(r) || []).find(
+        (x) => x !== socket.user.username,
+      );
+      if (otherUser && onlineSockets.has(otherUser)) {
+        const { deliveredAt } = markDeliveredForRoomExceptUser(
+          r,
+          socket.user.username,
+          msg.createdAt,
+        );
+        msg.deliveredAt = deliveredAt;
+      }
+
       io.to(r).emit("message:new", msg);
       socket.emit("message:delivered", {
         clientId: msg.clientId,
@@ -714,21 +766,62 @@ io.on("connection", (socket) => {
     const from = socket.user.username;
     const target = String(to || "");
     if (!target || target === from) return;
+    const type = callType === "video" ? "video" : "audio";
 
     const targetSocketId = onlineSockets.get(target);
     if (!targetSocketId) {
+      const id = randomUUID();
+      const now = Date.now();
+      createCallHistory({
+        id,
+        room: socket.data.room,
+        caller: from,
+        callee: target,
+        callType: type,
+        status: "unavailable",
+        startedAt: now,
+        endedAt: now,
+      });
+      emitCallHistoryUpdate(getCallHistoryById(id));
       socket.emit("call:unavailable", { to: target });
       return;
     }
 
     if (activeCalls.has(from) || activeCalls.has(target)) {
+      const id = randomUUID();
+      const now = Date.now();
+      createCallHistory({
+        id,
+        room: socket.data.room,
+        caller: from,
+        callee: target,
+        callType: type,
+        status: "busy",
+        startedAt: now,
+        endedAt: now,
+      });
+      emitCallHistoryUpdate(getCallHistoryById(id));
       socket.emit("call:busy", { to: target });
       return;
     }
 
+    const historyId = randomUUID();
+    createCallHistory({
+      id: historyId,
+      room: socket.data.room,
+      caller: from,
+      callee: target,
+      callType: type,
+      status: "ringing",
+      startedAt: Date.now(),
+    });
+    callHistoryByUser.set(from, historyId);
+    callHistoryByUser.set(target, historyId);
+    emitCallHistoryUpdate(getCallHistoryById(historyId));
+
     io.to(targetSocketId).emit("call:incoming", {
       from,
-      callType: callType === "video" ? "video" : "audio",
+      callType: type,
       room: socket.data.room,
     });
   });
@@ -742,12 +835,29 @@ io.on("connection", (socket) => {
     activeCalls.set(from, target);
     activeCalls.set(target, from);
 
+    const historyId = callHistoryByUser.get(from);
+    if (historyId) {
+      markCallAccepted(historyId);
+      emitCallHistoryUpdate(getCallHistoryById(historyId));
+    }
+
     io.to(targetSocketId).emit("call:accepted", { from });
   });
 
   socket.on("call:reject", ({ to }) => {
     const from = socket.user.username;
-    const targetSocketId = onlineSockets.get(String(to || ""));
+    const target = String(to || "");
+
+    const historyId = callHistoryByUser.get(from);
+    if (historyId) {
+      markCallTerminal(historyId, "rejected");
+      const row = getCallHistoryById(historyId);
+      callHistoryByUser.delete(from);
+      callHistoryByUser.delete(target);
+      emitCallHistoryUpdate(row);
+    }
+
+    const targetSocketId = onlineSockets.get(target);
     if (targetSocketId) io.to(targetSocketId).emit("call:rejected", { from });
   });
 
@@ -784,6 +894,16 @@ io.on("connection", (socket) => {
 
     activeCalls.delete(from);
     activeCalls.delete(target);
+
+    const historyId = callHistoryByUser.get(from);
+    if (historyId) {
+      const row = getCallHistoryById(historyId);
+      const finalStatus = row?.status === "accepted" ? "ended" : "missed";
+      markCallTerminal(historyId, finalStatus);
+      callHistoryByUser.delete(from);
+      callHistoryByUser.delete(target);
+      emitCallHistoryUpdate(getCallHistoryById(historyId));
+    }
 
     const targetSocketId = onlineSockets.get(target);
     if (targetSocketId) io.to(targetSocketId).emit("call:ended", { from });
@@ -829,6 +949,16 @@ function finalizeDisconnect(u, r, socketId) {
         from: u,
         reason: "disconnect",
       });
+  }
+
+  const historyId = callHistoryByUser.get(u);
+  if (historyId) {
+    const row = getCallHistoryById(historyId);
+    const finalStatus = row?.status === "accepted" ? "ended" : "missed";
+    markCallTerminal(historyId, finalStatus);
+    callHistoryByUser.delete(row?.caller);
+    callHistoryByUser.delete(row?.callee);
+    emitCallHistoryUpdate(getCallHistoryById(historyId));
   }
 
   if (!r) return;

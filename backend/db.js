@@ -80,6 +80,22 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_otp_expires ON otp_codes(expires_at);
+
+  -- CALL HISTORY
+  CREATE TABLE IF NOT EXISTS call_history (
+    id TEXT PRIMARY KEY,
+    room TEXT,
+    caller TEXT NOT NULL,
+    callee TEXT NOT NULL,
+    call_type TEXT NOT NULL DEFAULT 'audio',
+    status TEXT NOT NULL DEFAULT 'ringing',
+    started_at INTEGER NOT NULL,
+    answered_at INTEGER,
+    ended_at INTEGER
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_call_history_caller ON call_history(caller, started_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_call_history_callee ON call_history(callee, started_at DESC);
 `);
 
 function ensureColumn(table, column, sqlType) {
@@ -104,6 +120,7 @@ try {
   ensureColumn("messages", "attachment_size", "INTEGER");
   ensureColumn("messages", "type", "TEXT DEFAULT 'text'");
   ensureColumn("messages", "voice_url", "TEXT");
+  ensureColumn("messages", "delivered_at", "INTEGER");
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS deleted_messages (
@@ -205,7 +222,7 @@ const stmtGetRecentMessages = db.prepare(`
   SELECT id, room, client_id as clientId, username, text, system,
          created_at as createdAt, edited_at as editedAt,
          deleted_for_all as deletedForAll, reply_to as replyTo,
-         read_at as readAt,
+         read_at as readAt, delivered_at as deliveredAt,
          attachment_url as attachmentUrl, attachment_name as attachmentName,
          attachment_type as attachmentType, attachment_size as attachmentSize,
          type, voice_url as voiceUrl
@@ -219,7 +236,7 @@ const stmtGetMessageById = db.prepare(`
   SELECT id, room, client_id as clientId, username, text, system,
          created_at as createdAt, edited_at as editedAt,
          deleted_for_all as deletedForAll, reply_to as replyTo,
-         read_at as readAt,
+         read_at as readAt, delivered_at as deliveredAt,
          attachment_url as attachmentUrl, attachment_name as attachmentName,
          attachment_type as attachmentType, attachment_size as attachmentSize,
          type, voice_url as voiceUrl
@@ -230,7 +247,7 @@ const stmtGetMessageByClientId = db.prepare(`
   SELECT id, room, client_id as clientId, username, text, system,
          created_at as createdAt, edited_at as editedAt,
          deleted_for_all as deletedForAll, reply_to as replyTo,
-         read_at as readAt,
+         read_at as readAt, delivered_at as deliveredAt,
          attachment_url as attachmentUrl, attachment_name as attachmentName,
          attachment_type as attachmentType, attachment_size as attachmentSize,
          type, voice_url as voiceUrl
@@ -260,6 +277,43 @@ const stmtMarkReadForRoomExceptUser = db.prepare(`
   UPDATE messages
   SET read_at = ?
   WHERE room = ? AND username != ? AND created_at <= ? AND read_at IS NULL AND system = 0
+`);
+
+const stmtMarkDeliveredForRoomExceptUser = db.prepare(`
+  UPDATE messages
+  SET delivered_at = ?
+  WHERE room = ? AND username != ? AND created_at <= ? AND delivered_at IS NULL AND system = 0
+`);
+
+const stmtInsertCallHistory = db.prepare(`
+  INSERT INTO call_history (id, room, caller, callee, call_type, status, started_at, answered_at, ended_at)
+  VALUES (@id, @room, @caller, @callee, @call_type, @status, @started_at, @answered_at, @ended_at)
+`);
+
+const stmtUpdateCallHistoryAccepted = db.prepare(`
+  UPDATE call_history SET status = 'accepted', answered_at = ? WHERE id = ?
+`);
+
+const stmtUpdateCallHistoryTerminal = db.prepare(`
+  UPDATE call_history SET status = ?, ended_at = ? WHERE id = ?
+`);
+
+const stmtGetCallHistoryById = db.prepare(`
+  SELECT id, room, caller, callee, call_type as callType, status,
+         started_at as startedAt, answered_at as answeredAt, ended_at as endedAt
+  FROM call_history WHERE id = ?
+`);
+
+const stmtGetCallHistoryForUser = db.prepare(`
+  SELECT id, room, caller, callee, call_type as callType, status,
+         started_at as startedAt, answered_at as answeredAt, ended_at as endedAt
+  FROM (
+    SELECT * FROM call_history WHERE caller = @u
+    UNION ALL
+    SELECT * FROM call_history WHERE callee = @u
+  )
+  ORDER BY started_at DESC
+  LIMIT @limit
 `);
 
 function createUser({ id, username, email, passHash }) {
@@ -414,6 +468,63 @@ function markReadForRoomExceptUser(room, username, readUpToTs) {
   return readAt;
 }
 
+function markDeliveredForRoomExceptUser(room, username, deliveredUpToTs) {
+  const deliveredAt = Date.now();
+  const result = stmtMarkDeliveredForRoomExceptUser.run(
+    deliveredAt,
+    String(room),
+    String(username),
+    Number(deliveredUpToTs),
+  );
+  return { deliveredAt, changed: result.changes > 0 };
+}
+
+function createCallHistory({
+  id,
+  room,
+  caller,
+  callee,
+  callType,
+  status,
+  startedAt,
+  endedAt,
+}) {
+  stmtInsertCallHistory.run({
+    id: String(id),
+    room: room ? String(room) : null,
+    caller: String(caller),
+    callee: String(callee),
+    call_type: callType === "video" ? "video" : "audio",
+    status: String(status),
+    started_at: typeof startedAt === "number" ? startedAt : Date.now(),
+    answered_at: null,
+    ended_at: typeof endedAt === "number" ? endedAt : null,
+  });
+}
+
+function markCallAccepted(id) {
+  const answeredAt = Date.now();
+  stmtUpdateCallHistoryAccepted.run(answeredAt, String(id));
+  return answeredAt;
+}
+
+function markCallTerminal(id, status) {
+  const endedAt = Date.now();
+  stmtUpdateCallHistoryTerminal.run(String(status), endedAt, String(id));
+  return endedAt;
+}
+
+function getCallHistoryById(id) {
+  return stmtGetCallHistoryById.get(String(id));
+}
+
+function getCallHistoryForUser(username, limit = 200) {
+  return stmtGetCallHistoryForUser.all({
+    u: String(username),
+    limit: Number(limit),
+  });
+}
+
 module.exports = {
   db,
 
@@ -443,4 +554,11 @@ module.exports = {
   deleteMessageForUser,
   getDeletedMessageIdsForUser,
   markReadForRoomExceptUser,
+  markDeliveredForRoomExceptUser,
+
+  createCallHistory,
+  markCallAccepted,
+  markCallTerminal,
+  getCallHistoryById,
+  getCallHistoryForUser,
 };
