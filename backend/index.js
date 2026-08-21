@@ -1065,6 +1065,7 @@ function maybeEndCall(callId) {
   if (joinedCount === 0 || (joinedCount === 1 && ringingCount === 0)) {
     const finalStatus = session.everActive ? "ended" : "no-participants";
     markCallSessionStatus(callId, finalStatus);
+    emitCallHistoryUpdate(getCallHistoryRowById(callId));
     emitToParticipants(session, "call:ended", { callId, reason: finalStatus });
 
     activeCallSessions.delete(callId);
