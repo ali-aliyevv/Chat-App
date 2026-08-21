@@ -13,6 +13,7 @@ import { useLanguage } from "./context/LanguageContext";
 import { useCall } from "./hooks/useCall";
 import { useTheme } from "./context/ThemeContext";
 import { useViewportClamp } from "./hooks/useViewportClamp";
+import { usePushNotifications } from "./hooks/usePushNotifications";
 import SettingsBar from "./components/SettingsBar";
 import CallModal from "./components/CallModal";
 import CallHistoryView from "./components/CallHistoryView";
@@ -292,6 +293,7 @@ const ChatsPage = ({ user, onLogout }) => {
   const [callErrorMsg, setCallErrorMsg] = useState(null);
 
   const call = useCall(me);
+  const pushNotifications = usePushNotifications();
   /* ── Emoji picker state ── */
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [emojiPickerWidth, setEmojiPickerWidth] = useState(320);
@@ -1438,7 +1440,7 @@ const ChatsPage = ({ user, onLogout }) => {
             >
               <CallVideoIcon />
             </button>
-            <SettingsBar />
+            <SettingsBar pushNotifications={pushNotifications} />
             <button className="chat-logout" onClick={onLogout}>
               {t("logout")}
             </button>

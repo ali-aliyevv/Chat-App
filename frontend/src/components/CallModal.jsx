@@ -63,6 +63,24 @@ const PeopleIcon = () => (
   </svg>
 );
 
+const MinimizeIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="4 14 10 14 10 20" />
+    <polyline points="20 10 14 10 14 4" />
+    <line x1="14" y1="10" x2="21" y2="3" />
+    <line x1="3" y1="21" x2="10" y2="14" />
+  </svg>
+);
+
+const ExpandIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="15 3 21 3 21 9" />
+    <polyline points="9 21 3 21 3 15" />
+    <line x1="21" y1="3" x2="14" y2="10" />
+    <line x1="3" y1="21" x2="10" y2="14" />
+  </svg>
+);
+
 function formatDuration(startedAt) {
   if (!startedAt) return "00:00";
   const secs = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
@@ -157,6 +175,11 @@ export default function CallModal({
   const [blockedTiles, setBlockedTiles] = useState({});
   const [retryToken, setRetryToken] = useState(0);
   const [showParticipants, setShowParticipants] = useState(false);
+  const [minimized, setMinimized] = useState(false);
+
+  useEffect(() => {
+    if (callState.status === "idle") setMinimized(false);
+  }, [callState.status]);
 
   const onBlockedChange = useCallback((username, blocked) => {
     setBlockedTiles((prev) => {
@@ -220,8 +243,25 @@ export default function CallModal({
   else if (isActive) statusLabel = formatDuration(callState.startedAt);
 
   return (
-    <div className="call-overlay">
-      <div className={`call-panel ${showVideoGrid ? "video-mode" : ""}`}>
+    <div className={`call-overlay ${minimized ? "minimized" : ""}`}>
+      <div
+        className={`call-panel ${showVideoGrid ? "video-mode" : ""} ${minimized ? "minimized" : ""}`}
+        onClick={minimized ? () => setMinimized(false) : undefined}
+      >
+        {!isRinging ? (
+          <button
+            type="button"
+            className="call-minimize-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              setMinimized((v) => !v);
+            }}
+            title={minimized ? t("expandCall") : t("minimizeCall")}
+          >
+            {minimized ? <ExpandIcon /> : <MinimizeIcon />}
+          </button>
+        ) : null}
+
         {showVideoGrid ? (
           <>
             <div className="call-video-grid" data-count={tileCount}>

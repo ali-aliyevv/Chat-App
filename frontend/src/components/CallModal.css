@@ -35,6 +35,124 @@
   height: min(640px, 90vh);
 }
 
+/* ── Minimized (WhatsApp-style floating widget) ──
+   Only ever a CSS transform of the SAME DOM tree — nothing unmounts, so
+   audio/video for every participant keeps playing uninterrupted while
+   minimized; we just hide the parts that don't fit in the small widget. */
+.call-overlay.minimized {
+  position: fixed;
+  inset: auto;
+  right: 16px;
+  bottom: 90px;
+  width: auto;
+  height: auto;
+  background: transparent;
+  backdrop-filter: none;
+  z-index: 1500;
+  pointer-events: none;
+}
+
+.call-panel.minimized,
+.call-panel.video-mode.minimized {
+  width: 130px;
+  height: 170px;
+  border-radius: 18px;
+  cursor: pointer;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  pointer-events: auto;
+}
+
+.call-panel.minimized:not(.video-mode) {
+  width: 240px;
+  height: 64px;
+  border-radius: 999px;
+  flex-direction: row;
+  padding: 0 14px;
+  gap: 10px;
+}
+
+.call-panel.minimized .call-participants-wrap,
+.call-panel.minimized .call-video-overlay-info,
+.call-panel.minimized .call-tile-name,
+.call-panel.minimized .call-resume-playback,
+.call-panel.minimized .call-video-local,
+.call-panel.minimized .call-btn.secondary {
+  display: none !important;
+}
+
+.call-panel.minimized .call-video-grid {
+  grid-template-columns: 1fr !important;
+  grid-template-rows: 1fr !important;
+}
+
+.call-panel.minimized .call-video-grid > .call-video-tile:not(:first-child),
+.call-panel.minimized .call-avatar-row > *:not(:first-child) {
+  display: none;
+}
+
+.call-panel.minimized .call-avatar {
+  width: 44px;
+  height: 44px;
+  font-size: 18px;
+}
+
+.call-panel.minimized .call-peer-name {
+  font-size: 12px;
+  max-width: 110px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.call-panel.minimized .call-status-label {
+  font-size: 11px;
+}
+
+.call-panel.minimized .call-avatar-wrap {
+  flex-direction: row;
+  gap: 8px;
+}
+
+.call-panel.minimized .call-controls {
+  bottom: auto;
+  top: 6px;
+  right: 6px;
+  left: auto;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.call-panel.minimized .call-btn.decline {
+  width: 30px;
+  height: 30px;
+}
+
+.call-panel.minimized .call-btn.decline svg {
+  width: 15px;
+  height: 15px;
+}
+
+.call-minimize-btn {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  z-index: 6;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(10, 13, 26, 0.6);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.call-panel.minimized .call-minimize-btn {
+  display: none;
+}
+
 .call-audio-remote-sink {
   position: absolute;
   width: 1px;

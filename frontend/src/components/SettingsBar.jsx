@@ -71,7 +71,14 @@ const THEMES = [
   { code: "system", Icon: MonitorIcon },
 ];
 
-export default function SettingsBar({ compact = false }) {
+const BellIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+  </svg>
+);
+
+export default function SettingsBar({ compact = false, pushNotifications = null }) {
   const { lang, setLang, t } = useLanguage();
   const { theme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
@@ -174,6 +181,24 @@ export default function SettingsBar({ compact = false }) {
               ))}
             </div>
           </div>
+
+          {pushNotifications?.isSupported ? (
+            <div className="settings-section">
+              <span className="settings-section-label">{t("notifications")}</span>
+              <button
+                type="button"
+                className={`settings-notify-toggle ${pushNotifications.subscribed ? "active" : ""}`}
+                onClick={() =>
+                  pushNotifications.subscribed
+                    ? pushNotifications.unsubscribe()
+                    : pushNotifications.subscribe()
+                }
+              >
+                <BellIcon />
+                {pushNotifications.subscribed ? t("notificationsOn") : t("notificationsOff")}
+              </button>
+            </div>
+          ) : null}
         </div>
       )}
     </div>
@@ -182,4 +207,10 @@ export default function SettingsBar({ compact = false }) {
 
 SettingsBar.propTypes = {
   compact: PropTypes.bool,
+  pushNotifications: PropTypes.shape({
+    isSupported: PropTypes.bool,
+    subscribed: PropTypes.bool,
+    subscribe: PropTypes.func,
+    unsubscribe: PropTypes.func,
+  }),
 };

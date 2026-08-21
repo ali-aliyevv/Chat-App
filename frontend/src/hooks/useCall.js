@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { socket } from "../socket";
+import { startRingtone, stopRingtone } from "../utils/ringtone";
 
 const ICE_SERVERS = [
   { urls: "stun:stun.l.google.com:19302" },
@@ -614,6 +615,19 @@ export function useCall(me) {
     flushPendingCandidates,
     resetToIdle,
   ]);
+
+  // Ringtone for an incoming call, softer ringback for an outgoing one —
+  // stops as soon as the call moves past ringing/calling either way.
+  useEffect(() => {
+    if (callState.status === "ringing" && !callState.isStarter) {
+      startRingtone("incoming");
+    } else if (callState.status === "calling" && callState.isStarter) {
+      startRingtone("outgoing");
+    } else {
+      stopRingtone();
+    }
+    return () => stopRingtone();
+  }, [callState.status, callState.isStarter]);
 
   // Keep the screen awake while a call is ringing/connecting/active.
   // Without this, mobile devices auto-lock mid-call, which suspends the

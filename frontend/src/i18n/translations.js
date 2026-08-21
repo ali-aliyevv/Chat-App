@@ -82,6 +82,8 @@ export const translations = {
     switchCamera: "Kameranı dəyiş",
     noCameraAudioOnly: "Kamera tapılmadı, zəng səsli davam edir",
     tapToResumeCall: "Davam etmək üçün toxunun",
+    minimizeCall: "Kiçilt",
+    expandCall: "Böyüt",
     voiceMessage: "Səs mesajı",
     recording: "Yazılır...",
     // Call history
@@ -116,6 +118,9 @@ export const translations = {
     darkTheme: "Qaranlıq",
     lightTheme: "İşıqlı",
     systemTheme: "Sistem",
+    notifications: "Bildirişlər",
+    notificationsOn: "Bildirişlər aktivdir",
+    notificationsOff: "Bildirişləri aktivləşdir",
   },
   en: {
     // Auth
@@ -200,6 +205,8 @@ export const translations = {
     switchCamera: "Switch camera",
     noCameraAudioOnly: "No camera found, continuing as audio-only",
     tapToResumeCall: "Tap to resume",
+    minimizeCall: "Minimize",
+    expandCall: "Expand",
     voiceMessage: "Voice message",
     recording: "Recording...",
     // Call history
@@ -234,6 +241,9 @@ export const translations = {
     darkTheme: "Dark",
     lightTheme: "Light",
     systemTheme: "System",
+    notifications: "Notifications",
+    notificationsOn: "Notifications on",
+    notificationsOff: "Enable notifications",
   },
   ru: {
     // Auth
@@ -318,6 +328,8 @@ export const translations = {
     switchCamera: "Переключить камеру",
     noCameraAudioOnly: "Камера не найдена, звонок продолжается без видео",
     tapToResumeCall: "Нажмите, чтобы продолжить",
+    minimizeCall: "Свернуть",
+    expandCall: "Развернуть",
     voiceMessage: "Голосовое сообщение",
     recording: "Запись...",
     // Call history
@@ -352,5 +364,8 @@ export const translations = {
     darkTheme: "Тёмная",
     lightTheme: "Светлая",
     systemTheme: "Система",
+    notifications: "Уведомления",
+    notificationsOn: "Уведомления включены",
+    notificationsOff: "Включить уведомления",
   },
-};
+}; 

@@ -11,6 +11,7 @@ const bcrypt = require("bcryptjs");
 const multer = require("multer");
 const { Server } = require("socket.io");
 const { randomUUID } = require("crypto");
+const webpush = require("web-push");
 
 const { sendOtpEmail } = require("./mail");
 const {
@@ -50,6 +51,10 @@ const {
   getStickersForUser,
   deleteSticker,
 
+  addPushSubscription,
+  getPushSubscriptionsForUser,
+  deletePushSubscriptionByEndpoint,
+
   upsertOtp,
   getOtp,
   deleteOtp,
@@ -66,6 +71,45 @@ const REFRESH_SECRET = process.env.REFRESH_SECRET || "REFRESH_SECRET_CHANGE_ME";
 
 const INVITE_SECRET = process.env.INVITE_SECRET || "INVITE_SECRET_CHANGE_ME";
 const INVITE_EXPIRES_IN = "10m";
+
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || "";
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "";
+if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(
+    "mailto:support@realchat.app",
+    VAPID_PUBLIC_KEY,
+    VAPID_PRIVATE_KEY,
+  );
+} else {
+  console.log(
+    "⚠️  VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY not set — push notifications disabled",
+  );
+}
+
+async function sendPushToUser(username, payload) {
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
+  const subs = getPushSubscriptionsForUser(username);
+  const body = JSON.stringify(payload);
+  await Promise.all(
+    subs.map(async (sub) => {
+      try {
+        await webpush.sendNotification(
+          {
+            endpoint: sub.endpoint,
+            keys: { p256dh: sub.p256dh, auth: sub.auth },
+          },
+          body,
+        );
+      } catch (err) {
+        if (err.statusCode === 404 || err.statusCode === 410) {
+          deletePushSubscriptionByEndpoint(sub.endpoint);
+        } else {
+          console.log("❌ Push send error:", err?.message || err);
+        }
+      }
+    }),
+  );
+}
 
 const ACCESS_EXPIRES_IN = "15m";
 const REFRESH_EXPIRES_IN = "7d";
@@ -236,6 +280,32 @@ app.post("/api/stickers", requireAuth, (req, res) => {
 app.delete("/api/stickers/:id", requireAuth, (req, res) => {
   const removed = deleteSticker(req.params.id, req.user.username);
   if (!removed) return res.status(404).json({ message: "Sticker not found" });
+  return res.json({ ok: true });
+});
+
+app.get("/api/push/vapid-public-key", (req, res) => {
+  return res.json({ key: VAPID_PUBLIC_KEY });
+});
+
+app.post("/api/push/subscribe", requireAuth, (req, res) => {
+  const sub = req.body?.subscription;
+  if (!sub?.endpoint || !sub?.keys?.p256dh || !sub?.keys?.auth) {
+    return res.status(400).json({ message: "Invalid push subscription" });
+  }
+  addPushSubscription({
+    id: randomUUID(),
+    username: req.user.username,
+    endpoint: sub.endpoint,
+    p256dh: sub.keys.p256dh,
+    auth: sub.keys.auth,
+  });
+  return res.json({ ok: true });
+});
+
+app.post("/api/push/unsubscribe", requireAuth, (req, res) => {
+  const endpoint = req.body?.endpoint;
+  if (!endpoint) return res.status(400).json({ message: "Missing endpoint" });
+  deletePushSubscriptionByEndpoint(endpoint);
   return res.json({ ok: true });
 });
 
@@ -764,6 +834,18 @@ io.on("connection", (socket) => {
           msg.createdAt,
         );
         msg.deliveredAt = deliveredAt;
+      } else if (otherUser) {
+        let preview = t;
+        if (msgType === "voice") preview = "🎤 Səs mesajı";
+        else if (msgType === "sticker") preview = "Stiker göndərdi";
+        else if (att && !t) preview = `📎 ${att.name}`;
+        if (preview && preview.length > 120) preview = preview.slice(0, 120) + "...";
+
+        sendPushToUser(otherUser, {
+          title: socket.user.username,
+          body: preview || "Yeni mesaj",
+          room: r,
+        }).catch((err) => console.log("❌ Push notify error:", err?.message || err));
       }
 
       io.to(r).emit("message:new", msg);

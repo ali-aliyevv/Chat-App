@@ -9,13 +9,15 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: 'auto',
-      // Precache only the built app shell (JS/CSS/HTML/icons) so the app
-      // installs and launches instantly offline. Chat data, uploads, and
-      // the socket connection are never cached here — they're deliberately
-      // left to the network so nothing stale is ever shown.
-      workbox: {
+      // A custom source service worker (src/sw.js) is required to add the
+      // push/notificationclick listeners — the default generateSW strategy
+      // only produces an opaque auto-generated worker with no room for
+      // custom event handlers.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.js',
+      injectManifest: {
         globPatterns: ['**/*.{js,css,html,png,svg,ico,woff2}'],
-        navigateFallbackDenylist: [/^\/api\//, /^\/uploads\//, /^\/socket\.io\//],
       },
       manifest: {
         name: 'RealChat',

@@ -115,3 +115,30 @@
   color: rgba(180, 90, 0, 1);
   background: rgba(255, 176, 0, 0.15);
 }
+
+.settings-notify-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border, rgba(255,255,255,0.12));
+  background: var(--input-bg, rgba(0,0,0,0.18));
+  color: var(--muted, rgba(255,255,255,0.65));
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: 0.18s ease;
+}
+
+.settings-notify-toggle:hover {
+  border-color: var(--border-hover, rgba(255,255,255,0.25));
+  color: var(--text, rgba(255,255,255,0.92));
+}
+
+.settings-notify-toggle.active {
+  border-color: rgba(255, 176, 0, 0.5);
+  color: rgba(255, 176, 0, 1);
+  background: rgba(255, 176, 0, 0.12);
+}

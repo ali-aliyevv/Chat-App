@@ -119,6 +119,18 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_stickers_owner ON stickers(owner_username, created_at DESC);
+
+  -- PUSH SUBSCRIPTIONS: a user can have several (one per browser/device)
+  CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    endpoint TEXT NOT NULL UNIQUE,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_push_subs_username ON push_subscriptions(username);
 `);
 
 function ensureColumn(table, column, sqlType) {
@@ -433,6 +445,24 @@ const stmtDeleteSticker = db.prepare(`
   DELETE FROM stickers WHERE id = ? AND owner_username = ?
 `);
 
+const stmtInsertPushSubscription = db.prepare(`
+  INSERT INTO push_subscriptions (id, username, endpoint, p256dh, auth, created_at)
+  VALUES (@id, @username, @endpoint, @p256dh, @auth, @created_at)
+  ON CONFLICT(endpoint) DO UPDATE SET
+    username = excluded.username,
+    p256dh = excluded.p256dh,
+    auth = excluded.auth
+`);
+
+const stmtGetPushSubscriptionsForUser = db.prepare(`
+  SELECT id, username, endpoint, p256dh, auth, created_at as createdAt
+  FROM push_subscriptions WHERE username = ?
+`);
+
+const stmtDeletePushSubscriptionByEndpoint = db.prepare(`
+  DELETE FROM push_subscriptions WHERE endpoint = ?
+`);
+
 function createUser({ id, username, email, passHash }) {
   stmtCreateUser.run({
     id,
@@ -714,6 +744,25 @@ function deleteSticker(id, ownerUsername) {
   return result.changes > 0;
 }
 
+function addPushSubscription({ id, username, endpoint, p256dh, auth }) {
+  stmtInsertPushSubscription.run({
+    id: String(id),
+    username: String(username),
+    endpoint: String(endpoint),
+    p256dh: String(p256dh),
+    auth: String(auth),
+    created_at: Date.now(),
+  });
+}
+
+function getPushSubscriptionsForUser(username) {
+  return stmtGetPushSubscriptionsForUser.all(String(username));
+}
+
+function deletePushSubscriptionByEndpoint(endpoint) {
+  stmtDeletePushSubscriptionByEndpoint.run(String(endpoint));
+}
+
 module.exports = {
   db,
 
@@ -757,4 +806,8 @@ module.exports = {
   addSticker,
   getStickersForUser,
   deleteSticker,
+
+  addPushSubscription,
+  getPushSubscriptionsForUser,
+  deletePushSubscriptionByEndpoint,
 };
