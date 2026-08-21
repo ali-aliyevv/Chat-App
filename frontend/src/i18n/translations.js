@@ -30,6 +30,7 @@ export const translations = {
     codeSent: "Kod yenidən göndərildi.",
     otpMustBe6: "OTP kod 6 rəqəm olmalıdır",
     goBack: "Geri (məlumatları düzəlt)",
+    wrongCredentials: "İstifadəçi adı/email və ya şifrə yanlışdır",
     // Chat
     logout: "Çıxış",
     online: "Onlayn",
@@ -147,6 +148,7 @@ export const translations = {
     codeSent: "Code has been resent.",
     otpMustBe6: "OTP code must be 6 digits",
     goBack: "Go back (edit details)",
+    wrongCredentials: "Username/email or password is incorrect",
     // Chat
     logout: "Logout",
     online: "Online",
@@ -264,6 +266,7 @@ export const translations = {
     codeSent: "Код отправлен повторно.",
     otpMustBe6: "OTP-код должен содержать 6 цифр",
     goBack: "Назад (изменить данные)",
+    wrongCredentials: "Неверное имя пользователя/email или пароль",
     // Chat
     logout: "Выйти",
     online: "Онлайн",

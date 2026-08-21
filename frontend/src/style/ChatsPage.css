@@ -907,12 +907,19 @@ body {
   bottom: 52px;
   right: 0;
   z-index: 100;
-  border-radius: 14px;
+  border-radius: 16px;
   overflow: hidden;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
   animation: ctxFadeIn 0.15s ease;
   background: var(--chat-ctx-bg);
   border: 1px solid var(--chat-ctx-border);
+}
+
+.emoji-picker-popover::before {
+  content: "";
+  display: block;
+  height: 3px;
+  background: linear-gradient(90deg, #ffb000, #ff3d00 55%, #ff00aa);
 }
 
 @media (max-width: 860px) {
@@ -924,6 +931,33 @@ body {
     width: auto;
     z-index: 1000;
   }
+}
+
+/* Reskin the emoji-picker-react library to match the app's brand instead
+   of its generic default look — the descendant selector out-specifies the
+   library's own bare `.EmojiPickerReact` rule so these win regardless of
+   stylesheet injection order. */
+.emoji-picker-popover .EmojiPickerReact {
+  --epr-bg-color: transparent;
+  --epr-category-label-bg-color: var(--chat-ctx-bg);
+  --epr-text-color: var(--chat-ctx-text);
+  --epr-hover-bg-color: var(--chat-ctx-hover);
+  --epr-focus-bg-color: var(--chat-ctx-hover);
+  --epr-highlight-color: #ff3d00;
+  --epr-search-input-bg-color: var(--chat-input-bg);
+  --epr-search-input-bg-color-active: var(--chat-input-bg);
+  --epr-search-input-text-color: var(--chat-input-text);
+  --epr-search-input-placeholder-color: var(--chat-input-placeholder);
+  --epr-search-border-color: #ff3d00;
+  --epr-picker-border-color: transparent;
+  --epr-category-icon-active-color: #ff3d00;
+  --epr-category-label-text-color: var(--chat-subtitle-color);
+  --epr-skin-tone-picker-menu-color: var(--chat-ctx-bg);
+  border: none !important;
+}
+
+.emoji-picker-popover .EmojiPickerReact input.epr-search {
+  border-radius: 10px;
 }
 
 .picker-tabs {
@@ -942,10 +976,11 @@ body {
   font-size: 12.5px;
   font-weight: 700;
   cursor: pointer;
+  transition: background 0.15s, color 0.15s;
 }
 
 .picker-tab.active {
-  background: var(--chat-user-bg);
+  background: var(--chat-bubble-mine-bg);
   color: var(--chat-title-color);
 }
 
@@ -964,15 +999,21 @@ body {
   width: 100%;
   aspect-ratio: 1;
   border-radius: 12px;
-  border: 1px dashed var(--chat-ctx-border);
+  border: 1.5px dashed #ff3d00;
   background: var(--chat-user-bg);
-  color: var(--chat-subtitle-color);
+  color: #ff3d00;
   font-size: 26px;
   font-weight: 300;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: background 0.15s, transform 0.15s;
+}
+
+.sticker-add-tile:hover {
+  background: var(--chat-ctx-hover);
+  transform: translateY(-1px);
 }
 
 .sticker-tile {
@@ -990,6 +1031,12 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: background 0.15s, transform 0.15s;
+}
+
+.sticker-tile-btn:hover {
+  background: var(--chat-ctx-hover);
+  transform: translateY(-1px) scale(1.04);
 }
 
 .sticker-tile-btn img {

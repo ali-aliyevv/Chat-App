@@ -15,6 +15,19 @@ const formatMMSS = (sec) => {
   return `${m}:${s}`;
 };
 
+// Backend error codes that have a translated string; anything without a
+// code (or an unrecognized one) falls back to the server's raw message.
+const ERROR_CODE_KEYS = {
+  WRONG_CREDENTIALS: "wrongCredentials",
+};
+
+function errorMessage(err, t) {
+  const code = err.response?.data?.code;
+  const key = code && ERROR_CODE_KEYS[code];
+  if (key) return t(key);
+  return err.response?.data?.message || err.message;
+}
+
 const AuthPage = ({ onAuthed, pendingRoom }) => {
   const { t } = useLanguage();
 
@@ -161,7 +174,7 @@ const AuthPage = ({ onAuthed, pendingRoom }) => {
 
       onAuthed({ username: r.data.username, room: room.trim() || "general" });
     } catch (e2) {
-      setErr(e2.response?.data?.message || e2.message);
+      setErr(errorMessage(e2, t));
     } finally {
       setLoading(false);
     }

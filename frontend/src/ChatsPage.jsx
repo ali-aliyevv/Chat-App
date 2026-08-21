@@ -2103,6 +2103,7 @@ const ChatsPage = ({ user, onLogout }) => {
         muted={call.muted}
         cameraOff={call.cameraOff}
         canSwitchCamera={call.canSwitchCamera}
+        facingMode={call.facingMode}
         onAccept={call.acceptCall}
         onReject={call.rejectCall}
         onEnd={call.endCall}

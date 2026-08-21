@@ -374,10 +374,16 @@ app.post("/api/login", async (req, res) => {
   const password = String(req.body?.password || "");
 
   const user = findUserByIdentifier(identifier);
-  if (!user) return res.status(401).json({ message: "Wrong credentials" });
+  if (!user)
+    return res
+      .status(401)
+      .json({ code: "WRONG_CREDENTIALS", message: "Wrong credentials" });
 
   const ok = await bcrypt.compare(password, user.passHash);
-  if (!ok) return res.status(401).json({ message: "Wrong credentials" });
+  if (!ok)
+    return res
+      .status(401)
+      .json({ code: "WRONG_CREDENTIALS", message: "Wrong credentials" });
 
   const access = signAccess(user);
   const refresh = signRefresh(user);

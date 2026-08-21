@@ -103,7 +103,9 @@ textarea:-webkit-autofill:focus {
   min-height: 100vh;
   min-height: 100dvh;
   display: grid;
-  place-items: start center;
+  /* Centered, but "safe" falls back to top-alignment (scrollable) instead
+     of clipping the top of a card taller than the viewport. */
+  place-items: safe center;
   padding: 24px;
   position: relative;
 }

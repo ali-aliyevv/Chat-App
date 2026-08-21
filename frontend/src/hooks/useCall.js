@@ -96,6 +96,7 @@ export function useCall(me) {
   const [muted, setMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
   const [canSwitchCamera, setCanSwitchCamera] = useState(false);
+  const [facingMode, setFacingMode] = useState("user");
 
   const callStateRef = useRef(callState);
   const localStreamRef = useRef(null);
@@ -140,6 +141,8 @@ export function useCall(me) {
     setMuted(false);
     setCameraOff(false);
     setCanSwitchCamera(false);
+    facingModeRef.current = "user";
+    setFacingMode("user");
   }, [stopLocalStream]);
 
   const resetToIdle = useCallback(
@@ -431,6 +434,7 @@ export function useCall(me) {
       newTrack.enabled = wasEnabled;
       stream.addTrack(newTrack);
       facingModeRef.current = nextFacing;
+      setFacingMode(nextFacing);
       setLocalStream(new MediaStream(stream.getTracks()));
     } catch {
       /* device doesn't support the requested facing mode — keep current camera */
@@ -669,6 +673,7 @@ export function useCall(me) {
     muted,
     cameraOff,
     canSwitchCamera,
+    facingMode,
     startCall,
     acceptCall,
     rejectCall,
