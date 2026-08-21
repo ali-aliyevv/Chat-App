@@ -301,19 +301,65 @@
   background: #0b0f1a;
 }
 
+/* Anchored to the right of the minimize button, and kept clear of the
+   self-preview thumbnail (top-right, 110px + 16px inset) via the `right`
+   constraint — so it never collides with either on small screens. */
 .call-video-overlay-info {
   position: absolute;
-  left: 18px;
-  top: 16px;
+  left: 54px;
+  right: 142px;
+  top: 14px;
+  z-index: 5;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
+  min-width: 0;
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
 }
 
+.call-video-peer-name {
+  font-size: 14px;
+  font-weight: 800;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.call-video-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.call-video-meta-row .call-status-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.call-participant-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(10, 13, 26, 0.55);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* Audio calls have no self-preview thumbnail competing for the top-right
+   corner, so the participant badge lives there, clear of the minimize
+   button on the opposite side. */
 .call-participants-wrap {
   position: absolute;
-  left: 16px;
+  right: 16px;
   top: 16px;
   z-index: 5;
 }
@@ -332,8 +378,15 @@
   cursor: pointer;
 }
 
-.call-participant-list {
+.call-video-overlay-info .call-participant-list,
+.call-participants-wrap .call-participant-list {
+  position: absolute;
+  top: 100%;
+  right: 0;
   margin-top: 8px;
+}
+
+.call-participant-list {
   min-width: 180px;
   max-width: 240px;
   padding: 8px;
@@ -451,7 +504,8 @@
   /* Standalone PWA mode can draw under the notch/home-indicator
      (viewport-fit=cover) — keep controls and overlays clear of them. */
   .call-controls { bottom: calc(26px + env(safe-area-inset-bottom)); }
+  .call-minimize-btn { top: calc(12px + env(safe-area-inset-top)); }
   .call-video-local { top: calc(16px + env(safe-area-inset-top)); }
-  .call-video-overlay-info { top: calc(16px + env(safe-area-inset-top)); }
+  .call-video-overlay-info { top: calc(14px + env(safe-area-inset-top)); }
   .call-participants-wrap { top: calc(16px + env(safe-area-inset-top)); }
 }

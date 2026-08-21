@@ -153,6 +153,35 @@ RemoteAudioSink.propTypes = {
   onBlockedChange: PropTypes.func.isRequired,
 };
 
+function ParticipantList({ me, allOthers, participants, t }) {
+  return (
+    <div className="call-participant-list">
+      {[me, ...allOthers].map((u) => (
+        <div key={u} className="call-participant-row">
+          <span className="call-participant-dot" />
+          <span>{u}</span>
+          <span className="call-participant-status">
+            {u === me
+              ? ""
+              : participants[u]?.status === "joined"
+                ? t("connected")
+                : participants[u]?.status === "ringing"
+                  ? t("ringingStatus")
+                  : ""}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+ParticipantList.propTypes = {
+  me: PropTypes.string.isRequired,
+  allOthers: PropTypes.arrayOf(PropTypes.string).isRequired,
+  participants: PropTypes.object.isRequired,
+  t: PropTypes.func.isRequired,
+};
+
 export default function CallModal({
   callState,
   me,
@@ -332,11 +361,32 @@ export default function CallModal({
 
         {showVideoGrid ? (
           <div className="call-video-overlay-info">
-            <span className="call-status-label">{statusLabel}</span>
+            {allOthers.length > 0 ? (
+              <span className="call-video-peer-name">
+                {allOthers.length > 1 ? allOthers.join(", ") : allOthers[0]}
+              </span>
+            ) : null}
+            <div className="call-video-meta-row">
+              <span className="call-status-label">{statusLabel}</span>
+              {allOthers.length > 0 ? (
+                <button
+                  type="button"
+                  className="call-participant-chip"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowParticipants((v) => !v);
+                  }}
+                >
+                  <PeopleIcon />
+                  {allOthers.length + 1}
+                </button>
+              ) : null}
+            </div>
+            {showParticipants ? (
+              <ParticipantList me={me} allOthers={allOthers} participants={callState.participants} t={t} />
+            ) : null}
           </div>
-        ) : null}
-
-        {allOthers.length > 0 ? (
+        ) : allOthers.length > 0 ? (
           <div className="call-participants-wrap">
             <button
               type="button"
@@ -347,23 +397,7 @@ export default function CallModal({
               {allOthers.length + 1}
             </button>
             {showParticipants ? (
-              <div className="call-participant-list">
-                {[me, ...allOthers].map((u) => (
-                  <div key={u} className="call-participant-row">
-                    <span className="call-participant-dot" />
-                    <span>{u}</span>
-                    <span className="call-participant-status">
-                      {u === me
-                        ? ""
-                        : callState.participants[u]?.status === "joined"
-                          ? t("connected")
-                          : callState.participants[u]?.status === "ringing"
-                            ? t("ringingStatus")
-                            : ""}
-                    </span>
-                  </div>
-                ))}
-              </div>
+              <ParticipantList me={me} allOthers={allOthers} participants={callState.participants} t={t} />
             ) : null}
           </div>
         ) : null}
