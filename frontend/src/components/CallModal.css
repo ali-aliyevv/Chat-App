@@ -317,4 +317,11 @@
 @media (max-width: 480px) {
   .call-panel { border-radius: 0; width: 100vw; height: 100vh; }
   .call-panel.video-mode { width: 100vw; height: 100vh; }
+
+  /* Standalone PWA mode can draw under the notch/home-indicator
+     (viewport-fit=cover) — keep controls and overlays clear of them. */
+  .call-controls { bottom: calc(26px + env(safe-area-inset-bottom)); }
+  .call-video-local { top: calc(16px + env(safe-area-inset-top)); }
+  .call-video-overlay-info { top: calc(16px + env(safe-area-inset-top)); }
+  .call-participants-wrap { top: calc(16px + env(safe-area-inset-top)); }
 }
