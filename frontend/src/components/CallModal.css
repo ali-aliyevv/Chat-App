@@ -440,8 +440,13 @@
 }
 
 @media (max-width: 480px) {
-  .call-panel { border-radius: 0; width: 100vw; height: 100vh; }
-  .call-panel.video-mode { width: 100vw; height: 100vh; }
+  /* iOS Safari's address/toolbar chrome expands and collapses as the user
+     scrolls, and a static 100vh is sized for whichever state was active on
+     layout — leaving a gap (revealing the page behind) once the toolbar
+     grows back. 100dvh tracks the *current* visible viewport instead. */
+  .call-panel { border-radius: 0; width: 100vw; height: 100vh; height: 100dvh; }
+  .call-panel.video-mode { width: 100vw; height: 100vh; height: 100dvh; }
+  .call-overlay { height: 100vh; height: 100dvh; }
 
   /* Standalone PWA mode can draw under the notch/home-indicator
      (viewport-fit=cover) — keep controls and overlays clear of them. */
