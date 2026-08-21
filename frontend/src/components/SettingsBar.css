@@ -104,16 +104,16 @@
 
 .settings-lang-btn.active,
 .settings-theme-btn.active {
-  border-color: rgba(255, 176, 0, 0.5);
-  color: rgba(255, 176, 0, 1);
-  background: rgba(255, 176, 0, 0.12);
+  border-color: rgba(52, 168, 116, 0.5);
+  color: rgba(52, 168, 116, 1);
+  background: rgba(52, 168, 116, 0.12);
 }
 
 [data-theme="light"] .settings-lang-btn.active,
 [data-theme="light"] .settings-theme-btn.active {
-  border-color: rgba(220, 120, 0, 0.5);
-  color: rgba(180, 90, 0, 1);
-  background: rgba(255, 176, 0, 0.15);
+  border-color: rgba(30, 127, 92, 0.5);
+  color: rgba(20, 110, 80, 1);
+  background: rgba(52, 168, 116, 0.15);
 }
 
 .settings-notify-toggle {
@@ -138,7 +138,7 @@
 }
 
 .settings-notify-toggle.active {
-  border-color: rgba(255, 176, 0, 0.5);
-  color: rgba(255, 176, 0, 1);
-  background: rgba(255, 176, 0, 0.12);
+  border-color: rgba(52, 168, 116, 0.5);
+  color: rgba(52, 168, 116, 1);
+  background: rgba(52, 168, 116, 0.12);
 }

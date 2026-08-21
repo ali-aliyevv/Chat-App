@@ -11,7 +11,7 @@ import PropTypes from "prop-types";
 const ThemeContext = createContext(null);
 
 const STORAGE_KEY = "app-theme";
-const DEFAULT_THEME = "dark";
+const DEFAULT_THEME = "light";
 const SUPPORTED = ["dark", "light", "system"];
 
 function getInitialTheme() {
