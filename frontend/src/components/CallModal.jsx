@@ -200,15 +200,77 @@ export default function CallModal({
 }) {
   const { t } = useLanguage();
   const localVideoRef = useRef(null);
+  const overlayRef = useRef(null);
+  const dragRef = useRef(null);
   const [, forceTick] = useState(0);
   const [blockedTiles, setBlockedTiles] = useState({});
   const [retryToken, setRetryToken] = useState(0);
   const [showParticipants, setShowParticipants] = useState(false);
   const [minimized, setMinimized] = useState(false);
+  const [widgetPos, setWidgetPos] = useState(null);
 
   useEffect(() => {
-    if (callState.status === "idle") setMinimized(false);
+    if (callState.status === "idle") {
+      setMinimized(false);
+      setWidgetPos(null);
+    }
   }, [callState.status]);
+
+  const clampWidgetPos = useCallback((x, y) => {
+    const el = overlayRef.current;
+    const w = el?.offsetWidth || 130;
+    const h = el?.offsetHeight || 170;
+    const maxX = Math.max(8, window.innerWidth - w - 8);
+    const maxY = Math.max(8, window.innerHeight - h - 8);
+    return { x: Math.min(Math.max(8, x), maxX), y: Math.min(Math.max(8, y), maxY) };
+  }, []);
+
+  useEffect(() => {
+    if (!minimized || !widgetPos) return undefined;
+    const onResize = () => setWidgetPos((p) => (p ? clampWidgetPos(p.x, p.y) : p));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [minimized, widgetPos, clampWidgetPos]);
+
+  const onWidgetPointerDown = (e) => {
+    if (!minimized) return;
+    // Let buttons inside the widget (e.g. the decline call button) handle
+    // their own click uninterrupted — capturing the pointer here would
+    // retarget its pointerup (and the click derived from it) to the
+    // overlay instead of the button.
+    if (e.target.closest(".call-btn")) return;
+    const el = overlayRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      originX: rect.left,
+      originY: rect.top,
+      moved: false,
+      pointerId: e.pointerId,
+    };
+    el.setPointerCapture(e.pointerId);
+  };
+
+  const onWidgetPointerMove = (e) => {
+    const ds = dragRef.current;
+    if (!ds || ds.pointerId !== e.pointerId) return;
+    const dx = e.clientX - ds.startX;
+    const dy = e.clientY - ds.startY;
+    if (!ds.moved && Math.hypot(dx, dy) > 6) ds.moved = true;
+    if (!ds.moved) return;
+    setWidgetPos(clampWidgetPos(ds.originX + dx, ds.originY + dy));
+  };
+
+  const onWidgetPointerUp = (e) => {
+    const ds = dragRef.current;
+    dragRef.current = null;
+    if (!ds || ds.pointerId !== e.pointerId) return;
+    const el = overlayRef.current;
+    if (el?.hasPointerCapture?.(e.pointerId)) el.releasePointerCapture(e.pointerId);
+    if (!ds.moved && !e.target.closest(".call-btn")) setMinimized(false);
+  };
 
   const onBlockedChange = useCallback((username, blocked) => {
     setBlockedTiles((prev) => {
@@ -271,11 +333,23 @@ export default function CallModal({
   else if (isConnecting) statusLabel = t("connecting");
   else if (isActive) statusLabel = formatDuration(callState.startedAt);
 
+  const widgetStyle =
+    minimized && widgetPos
+      ? { left: widgetPos.x, top: widgetPos.y, right: "auto", bottom: "auto" }
+      : undefined;
+
   return (
-    <div className={`call-overlay ${minimized ? "minimized" : ""}`}>
+    <div
+      ref={overlayRef}
+      className={`call-overlay ${minimized ? "minimized" : ""}`}
+      style={widgetStyle}
+      onPointerDown={onWidgetPointerDown}
+      onPointerMove={onWidgetPointerMove}
+      onPointerUp={onWidgetPointerUp}
+      onPointerCancel={onWidgetPointerUp}
+    >
       <div
         className={`call-panel ${showVideoGrid ? "video-mode" : ""} ${minimized ? "minimized" : ""}`}
-        onClick={minimized ? () => setMinimized(false) : undefined}
       >
         {!isRinging ? (
           <button

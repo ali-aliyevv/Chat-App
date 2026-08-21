@@ -49,7 +49,11 @@
   background: transparent;
   backdrop-filter: none;
   z-index: 1500;
-  pointer-events: none;
+  pointer-events: auto;
+  /* Free dragging (JS-driven via pointer events) — without this, mobile
+     browsers intercept the touch as a page scroll/pan gesture instead. */
+  touch-action: none;
+  cursor: grab;
 }
 
 .call-panel.minimized,
@@ -57,7 +61,7 @@
   width: 130px;
   height: 170px;
   border-radius: 18px;
-  cursor: pointer;
+  cursor: grab;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
   pointer-events: auto;
 }
