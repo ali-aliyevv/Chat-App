@@ -93,6 +93,7 @@ function formatFileSize(bytes) {
 }
 
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+const BOT_USERNAME = "🤖 Bot";
 
 const AttachIcon = () => (
   <svg
@@ -1657,6 +1658,7 @@ const ChatsPage = ({ user, onLogout }) => {
               const m = it.msg;
               const time = formatTime(m.createdAt);
               const isMine = !m.system && m.username === me;
+              const isBot = !m.system && m.username === BOT_USERNAME;
               const isDeleted = !!m.deletedForAll;
               const isVoice = m.type === "voice" && m.voiceUrl;
               const isSticker = m.type === "sticker" && m.attachmentUrl;
@@ -1665,7 +1667,7 @@ const ChatsPage = ({ user, onLogout }) => {
               return (
                 <div
                   key={it.key}
-                  className={`msg ${m.system ? "system" : isMine ? "mine" : "theirs"}`}
+                  className={`msg ${m.system ? "system" : isMine ? "mine" : "theirs"} ${isBot ? "bot" : ""}`}
                   onContextMenu={(e) => handleContextMenu(e, m)}
                   onTouchStart={(e) => handleTouchStart(e, m)}
                   onTouchMove={(e) => handleTouchMove(e, m)}

@@ -439,6 +439,12 @@ body {
   text-align:center;
 }
 
+.msg.bot .msg-bubble{
+  background: linear-gradient(135deg, rgba(124,58,237,0.16), rgba(124,58,237,0.08));
+  border-color: rgba(124,58,237,0.35);
+  white-space: pre-wrap;
+}
+
 .msg-day{
   align-self: center;
   max-width: 90%;

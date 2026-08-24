@@ -97,6 +97,105 @@ if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
   );
 }
 
+// ── Utility bot ──
+// A free, rule-based "/command" bot (no paid AI API) — replies to a
+// recognized slash-command with a normal chat message from a fixed bot
+// identity. Weather uses Open-Meteo, which needs no API key.
+const BOT_USERNAME = "🤖 Bot";
+
+function safeArithmetic(expr) {
+  if (!/^[0-9+\-*/().\s]+$/.test(expr)) return null;
+  try {
+    // eslint-disable-next-line no-new-func
+    const result = Function(`"use strict"; return (${expr});`)();
+    return typeof result === "number" && Number.isFinite(result) ? result : null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchWeather(place) {
+  const geoRes = await fetch(
+    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(place)}&count=1&language=az`,
+  );
+  const geo = await geoRes.json();
+  const hit = geo?.results?.[0];
+  if (!hit) return null;
+
+  const wRes = await fetch(
+    `https://api.open-meteo.com/v1/forecast?latitude=${hit.latitude}&longitude=${hit.longitude}&current_weather=true`,
+  );
+  const w = await wRes.json();
+  const cw = w?.current_weather;
+  if (!cw) return null;
+  return { name: hit.name, country: hit.country, temp: cw.temperature, wind: cw.windspeed };
+}
+
+const BOT_HELP_TEXT =
+  "🤖 Əmrlər:\n" +
+  "/vaxt — hazırkı vaxt\n" +
+  "/tarix — bugünkü tarix\n" +
+  "/hava <şəhər> — hava proqnozu\n" +
+  "/zər — zər at\n" +
+  "/sikkə — sikkə at\n" +
+  "/hesabla <ifadə> — hesablama (məs. /hesabla 2+2*3)\n" +
+  "/kömək — bu siyahı";
+
+// Returns the bot's reply text, or null if `text` isn't a recognized
+// command (so the caller knows not to post anything).
+async function computeBotReply(text) {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("/")) return null;
+
+  const [cmdRaw, ...rest] = trimmed.split(/\s+/);
+  const cmd = cmdRaw.toLowerCase();
+  const argStr = rest.join(" ").trim();
+
+  switch (cmd) {
+    case "/kömək":
+    case "/komek":
+    case "/help":
+      return BOT_HELP_TEXT;
+
+    case "/vaxt":
+      return `🕒 Hazırkı vaxt: ${new Date().toLocaleTimeString("az-AZ", { hour: "2-digit", minute: "2-digit" })}`;
+
+    case "/tarix":
+      return `📅 Bugünkü tarix: ${new Date().toLocaleDateString("az-AZ")}`;
+
+    case "/zər":
+    case "/zar":
+      return `🎲 ${1 + Math.floor(Math.random() * 6)}`;
+
+    case "/sikkə":
+    case "/sikke":
+      return Math.random() < 0.5 ? "🪙 Yazı" : "🪙 Şəkil";
+
+    case "/hesabla": {
+      if (!argStr) return "İstifadə: /hesabla 2+2*3";
+      const result = safeArithmetic(argStr);
+      return result === null
+        ? "Hesablaya bilmədim — yalnız ədəd və + - * / ( ) işarələrinə icazə verilir"
+        : `🧮 ${argStr} = ${result}`;
+    }
+
+    case "/hava": {
+      if (!argStr) return "İstifadə: /hava Bakı";
+      try {
+        const w = await fetchWeather(argStr);
+        if (!w) return `"${argStr}" tapılmadı`;
+        return `🌤️ ${w.name}${w.country ? ", " + w.country : ""}: ${w.temp}°C, külək ${w.wind} km/s`;
+      } catch (e) {
+        console.log("❌ Weather fetch error:", e?.message || e);
+        return "Hava məlumatı alınmadı, bir az sonra yenidən cəhd edin";
+      }
+    }
+
+    default:
+      return null;
+  }
+}
+
 async function sendPushToUser(username, payload) {
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
   const subs = getPushSubscriptionsForUser(username);
@@ -1026,6 +1125,27 @@ io.on("connection", (socket) => {
         clientId: msg.clientId,
         messageId: msg.id,
       });
+
+      if (msgType === "text" && t.startsWith("/")) {
+        computeBotReply(t)
+          .then((reply) => {
+            if (!reply) return;
+            const botMsg = {
+              id: randomUUID(),
+              room: r,
+              clientId: null,
+              username: BOT_USERNAME,
+              text: reply,
+              system: false,
+              createdAt: Date.now(),
+              replyTo: null,
+              type: "text",
+            };
+            addMessage(botMsg);
+            io.to(r).emit("message:new", botMsg);
+          })
+          .catch((e) => console.log("❌ Bot reply error:", e?.message || e));
+      }
     },
   );
 
