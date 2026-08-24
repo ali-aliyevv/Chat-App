@@ -78,7 +78,14 @@ const BellIcon = () => (
   </svg>
 );
 
-export default function SettingsBar({ compact = false, pushNotifications = null }) {
+const UserIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+    <circle cx="12" cy="7" r="4" />
+  </svg>
+);
+
+export default function SettingsBar({ compact = false, pushNotifications = null, onOpenProfile = null }) {
   const { lang, setLang, t } = useLanguage();
   const { theme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
@@ -151,6 +158,20 @@ export default function SettingsBar({ compact = false, pushNotifications = null 
 
       {open && (
         <div className="settings-dropdown">
+          {onOpenProfile ? (
+            <button
+              type="button"
+              className="settings-profile-btn"
+              onClick={() => {
+                setOpen(false);
+                onOpenProfile();
+              }}
+            >
+              <UserIcon />
+              {t("profile")}
+            </button>
+          ) : null}
+
           <div className="settings-section">
             <span className="settings-section-label">{t("language")}</span>
             <div className="settings-lang-group">
@@ -213,4 +234,5 @@ SettingsBar.propTypes = {
     subscribe: PropTypes.func,
     unsubscribe: PropTypes.func,
   }),
+  onOpenProfile: PropTypes.func,
 };

@@ -55,6 +55,17 @@ const {
   getPushSubscriptionsForUser,
   deletePushSubscriptionByEndpoint,
 
+  updateUserProfile,
+  updateUserPassword,
+
+  addStatus,
+  getActiveStatusesFeed,
+  getStatusById,
+  markStatusViewed,
+  getStatusViewers,
+  deleteStatus,
+  deleteExpiredStatuses,
+
   upsertOtp,
   getOtp,
   deleteOtp,
@@ -131,6 +142,21 @@ const UPLOADS_DIR = path.join(__dirname, "uploads");
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 app.use("/uploads", express.static(UPLOADS_DIR));
+
+// Best-effort delete of a file previously returned by /api/upload — only
+// ever touches files that resolve inside UPLOADS_DIR.
+function deleteUploadedFileFromUrl(url) {
+  if (!url || typeof url !== "string") return;
+  const filename = url.split("/uploads/")[1];
+  if (!filename) return;
+  const filePath = path.join(UPLOADS_DIR, path.basename(filename));
+  if (!filePath.startsWith(UPLOADS_DIR)) return;
+  fs.unlink(filePath, (err) => {
+    if (err && err.code !== "ENOENT") {
+      console.log("⚠️  Failed to delete uploaded file:", err.message);
+    }
+  });
+}
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
@@ -280,6 +306,90 @@ app.post("/api/stickers", requireAuth, (req, res) => {
 app.delete("/api/stickers/:id", requireAuth, (req, res) => {
   const removed = deleteSticker(req.params.id, req.user.username);
   if (!removed) return res.status(404).json({ message: "Sticker not found" });
+  return res.json({ ok: true });
+});
+
+// STATUSES — visible to every registered user (no contacts list in this
+// app), each auto-expiring 24h after posting.
+app.get("/api/status", requireAuth, (req, res) => {
+  const feed = getActiveStatusesFeed(req.user.username).map((s) => {
+    const author = findUserByUsername(s.username);
+    return { ...s, avatarUrl: author?.avatarUrl || null };
+  });
+  return res.json(feed);
+});
+
+app.post("/api/status", requireAuth, (req, res) => {
+  const { type, text, mediaUrl, bgColor } = req.body || {};
+  const kind = type === "image" ? "image" : "text";
+
+  if (kind === "text" && !String(text || "").trim()) {
+    return res.status(400).json({ message: "Status text is required" });
+  }
+  if (kind === "image" && !mediaUrl) {
+    return res.status(400).json({ message: "Status image is required" });
+  }
+
+  const status = addStatus({
+    id: randomUUID(),
+    username: req.user.username,
+    type: kind,
+    text: text ? String(text).slice(0, 700) : null,
+    mediaUrl: mediaUrl || null,
+    bgColor: bgColor || null,
+  });
+
+  const author = findUserById(req.user.sub);
+  const payload = { ...status, avatarUrl: author?.avatarUrl || null };
+
+  // "viewed" is only true for the author (their own status is trivially
+  // seen) — broadcast without it so every other client's socket handler
+  // computes it per-viewer instead of trusting a one-size-fits-all flag.
+  io.emit("status:new", payload);
+  return res.json({ ...payload, viewed: true });
+});
+
+app.post("/api/status/:id/view", requireAuth, (req, res) => {
+  const status = getStatusById(req.params.id);
+  if (!status) return res.status(404).json({ message: "Status not found" });
+
+  if (status.username !== req.user.username) {
+    markStatusViewed(status.id, req.user.username);
+
+    const ownerSocketId = onlineSockets.get(status.username);
+    if (ownerSocketId) {
+      io.to(ownerSocketId).emit("status:viewed", {
+        statusId: status.id,
+        viewer: req.user.username,
+        viewedAt: Date.now(),
+      });
+    }
+  }
+  return res.json({ ok: true });
+});
+
+app.get("/api/status/:id/viewers", requireAuth, (req, res) => {
+  const status = getStatusById(req.params.id);
+  if (!status) return res.status(404).json({ message: "Status not found" });
+  if (status.username !== req.user.username) {
+    return res.status(403).json({ message: "Not your status" });
+  }
+  const viewers = getStatusViewers(status.id).map((v) => {
+    const u = findUserByUsername(v.username);
+    return { ...v, avatarUrl: u?.avatarUrl || null };
+  });
+  return res.json(viewers);
+});
+
+app.delete("/api/status/:id", requireAuth, (req, res) => {
+  const status = getStatusById(req.params.id);
+  if (!status || status.username !== req.user.username) {
+    return res.status(404).json({ message: "Status not found" });
+  }
+  deleteStatus(status.id, req.user.username);
+  if (status.mediaUrl) deleteUploadedFileFromUrl(status.mediaUrl);
+
+  io.emit("status:deleted", { id: status.id, username: status.username });
   return res.json({ ok: true });
 });
 
@@ -546,7 +656,48 @@ app.get("/api/me", optionalAuth, (req, res) => {
     id: req.user.sub,
     username: req.user.username,
     email: user?.email || null,
+    avatarUrl: user?.avatarUrl || null,
+    about: user?.about || null,
   });
+});
+
+app.patch("/api/me/profile", requireAuth, (req, res) => {
+  const { avatarUrl, about } = req.body || {};
+  if (avatarUrl !== undefined && avatarUrl !== null && typeof avatarUrl !== "string") {
+    return res.status(400).json({ message: "Invalid avatarUrl" });
+  }
+  if (about !== undefined && about !== null && typeof about !== "string") {
+    return res.status(400).json({ message: "Invalid about" });
+  }
+  const current = findUserById(req.user.sub);
+  updateUserProfile(req.user.sub, {
+    avatarUrl: avatarUrl !== undefined ? avatarUrl : current?.avatarUrl,
+    about: about !== undefined ? String(about).slice(0, 140) : current?.about,
+  });
+  const updated = findUserById(req.user.sub);
+  return res.json({
+    avatarUrl: updated?.avatarUrl || null,
+    about: updated?.about || null,
+  });
+});
+
+app.post("/api/me/password", requireAuth, async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ message: "Missing password fields" });
+  }
+  if (String(newPassword).length < 6) {
+    return res.status(400).json({ message: "Yeni şifrə ən azı 6 simvol olmalıdır" });
+  }
+  const user = findUserById(req.user.sub);
+  if (!user) return res.status(404).json({ message: "User not found" });
+
+  const ok = await bcrypt.compare(String(currentPassword), user.passHash);
+  if (!ok) return res.status(401).json({ message: "Cari şifrə yanlışdır" });
+
+  const newHash = await bcrypt.hash(String(newPassword), 10);
+  updateUserPassword(req.user.sub, newHash);
+  return res.json({ ok: true });
 });
 
 const io = new Server(server, {
@@ -1257,6 +1408,22 @@ function finalizeDisconnect(u, r, socketId) {
     emitUsers(r);
   }
 }
+
+// Statuses self-expire out of every GET /api/status response already —
+// this sweep only exists so expired rows/uploaded media don't pile up
+// forever, and so already-open clients drop them without needing a refetch.
+const STATUS_SWEEP_INTERVAL_MS = 15 * 60 * 1000;
+setInterval(() => {
+  try {
+    const expired = deleteExpiredStatuses();
+    expired.forEach((row) => {
+      if (row.mediaUrl) deleteUploadedFileFromUrl(row.mediaUrl);
+      io.emit("status:deleted", { id: row.id });
+    });
+  } catch (e) {
+    console.log("❌ Status sweep error:", e?.message || e);
+  }
+}, STATUS_SWEEP_INTERVAL_MS);
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () =>

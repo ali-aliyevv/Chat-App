@@ -14,9 +14,14 @@ import { useCall } from "./hooks/useCall";
 import { useTheme } from "./context/ThemeContext";
 import { useViewportClamp } from "./hooks/useViewportClamp";
 import { usePushNotifications } from "./hooks/usePushNotifications";
+import { useStatus } from "./hooks/useStatus";
 import SettingsBar from "./components/SettingsBar";
 import CallModal from "./components/CallModal";
 import CallHistoryView from "./components/CallHistoryView";
+import StatusTab from "./components/StatusTab";
+import StatusComposer from "./components/StatusComposer";
+import StatusViewer from "./components/StatusViewer";
+import ProfileSettingsModal from "./components/ProfileSettingsModal";
 import "./style/ChatsPage.css";
 
 function formatTime(createdAt) {
@@ -294,6 +299,52 @@ const ChatsPage = ({ user, onLogout }) => {
 
   const call = useCall(me);
   const pushNotifications = usePushNotifications();
+  const status = useStatus(me);
+
+  /* ── Profile (avatar/about) ── */
+  const [myProfile, setMyProfile] = useState({ avatarUrl: null, about: null });
+  const [showProfileModal, setShowProfileModal] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    api
+      .get("/api/me")
+      .then((res) => {
+        if (!mounted) return;
+        setMyProfile({
+          avatarUrl: res.data?.avatarUrl || null,
+          about: res.data?.about || null,
+        });
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleSaveProfile = useCallback(async ({ avatarUrl, about }) => {
+    const res = await api.patch("/api/me/profile", { avatarUrl, about });
+    setMyProfile({
+      avatarUrl: res.data?.avatarUrl || null,
+      about: res.data?.about || null,
+    });
+  }, []);
+
+  const handleChangePassword = useCallback(async (currentPassword, newPassword) => {
+    await api.post("/api/me/password", { currentPassword, newPassword });
+  }, []);
+
+  /* ── Status (24h updates) ── */
+  const [showStatusComposer, setShowStatusComposer] = useState(false);
+  const [viewerUsername, setViewerUsername] = useState(null);
+
+  const viewerGroup = useMemo(() => {
+    if (!viewerUsername) return null;
+    if (viewerUsername === me) {
+      return { username: me, avatarUrl: myProfile.avatarUrl, items: status.mine };
+    }
+    return status.othersGrouped.find((g) => g.username === viewerUsername) || null;
+  }, [viewerUsername, me, myProfile.avatarUrl, status.mine, status.othersGrouped]);
   /* ── Emoji picker state ── */
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [emojiPickerWidth, setEmojiPickerWidth] = useState(320);
@@ -1463,7 +1514,10 @@ const ChatsPage = ({ user, onLogout }) => {
             >
               <CallVideoIcon />
             </button>
-            <SettingsBar pushNotifications={pushNotifications} />
+            <SettingsBar
+              pushNotifications={pushNotifications}
+              onOpenProfile={() => setShowProfileModal(true)}
+            />
             <button className="chat-logout" onClick={onLogout}>
               {t("logout")}
             </button>
@@ -1489,6 +1543,13 @@ const ChatsPage = ({ user, onLogout }) => {
           >
             {t("callsTab")}
           </button>
+          <button
+            type="button"
+            className={`chat-tab ${activeTab === "status" ? "active" : ""}`}
+            onClick={() => setActiveTab("status")}
+          >
+            {t("statusTab")}
+          </button>
         </div>
 
         {activeTab === "calls" ? (
@@ -1499,6 +1560,15 @@ const ChatsPage = ({ user, onLogout }) => {
               setActiveTab("chat");
               call.startCall(room, callType);
             }}
+          />
+        ) : activeTab === "status" ? (
+          <StatusTab
+            me={me}
+            myAvatarUrl={myProfile.avatarUrl}
+            mine={status.mine}
+            othersGrouped={status.othersGrouped}
+            onAddClick={() => setShowStatusComposer(true)}
+            onOpenViewer={(g) => setViewerUsername(g.username)}
           />
         ) : (
           <>
@@ -2136,6 +2206,36 @@ const ChatsPage = ({ user, onLogout }) => {
         onToggleCamera={call.toggleCamera}
         onSwitchCamera={call.switchCamera}
       />
+
+      {showProfileModal ? (
+        <ProfileSettingsModal
+          me={me}
+          avatarUrl={myProfile.avatarUrl}
+          about={myProfile.about}
+          onClose={() => setShowProfileModal(false)}
+          onSaveProfile={handleSaveProfile}
+          onChangePassword={handleChangePassword}
+        />
+      ) : null}
+
+      {showStatusComposer ? (
+        <StatusComposer
+          onClose={() => setShowStatusComposer(false)}
+          onCreateText={status.createTextStatus}
+          onCreatePhoto={status.createImageStatus}
+        />
+      ) : null}
+
+      {viewerGroup ? (
+        <StatusViewer
+          group={viewerGroup}
+          me={me}
+          onClose={() => setViewerUsername(null)}
+          onView={status.viewStatus}
+          onDelete={status.deleteStatus}
+          getViewers={status.getViewers}
+        />
+      ) : null}
     </div>
   );
 };

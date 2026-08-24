@@ -131,6 +131,31 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_push_subs_username ON push_subscriptions(username);
+
+  -- STATUSES: WhatsApp-style 24h updates, visible to every registered user
+  -- (this app has no separate contacts list — rooms are freeform).
+  CREATE TABLE IF NOT EXISTS statuses (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'text',
+    text TEXT,
+    media_url TEXT,
+    bg_color TEXT,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_statuses_username ON statuses(username, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_statuses_expires ON statuses(expires_at);
+
+  CREATE TABLE IF NOT EXISTS status_views (
+    status_id TEXT NOT NULL,
+    viewer_username TEXT NOT NULL,
+    viewed_at INTEGER NOT NULL,
+    PRIMARY KEY (status_id, viewer_username)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_status_views_status ON status_views(status_id);
 `);
 
 function ensureColumn(table, column, sqlType) {
@@ -156,6 +181,8 @@ try {
   ensureColumn("messages", "type", "TEXT DEFAULT 'text'");
   ensureColumn("messages", "voice_url", "TEXT");
   ensureColumn("messages", "delivered_at", "INTEGER");
+  ensureColumn("users", "avatar_url", "TEXT");
+  ensureColumn("users", "about", "TEXT");
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS deleted_messages (
@@ -250,17 +277,27 @@ const stmtCreateUser = db.prepare(`
   VALUES (@id, @username, @email, @pass_hash, @created_at)
 `);
 
+const USER_COLUMNS = `id, username, email, pass_hash as passHash, avatar_url as avatarUrl, about`;
+
 const stmtFindUserByEmail = db.prepare(
-  `SELECT id, username, email, pass_hash as passHash FROM users WHERE email = ?`,
+  `SELECT ${USER_COLUMNS} FROM users WHERE email = ?`,
 );
 
 const stmtFindUserByUsername = db.prepare(
-  `SELECT id, username, email, pass_hash as passHash FROM users WHERE username = ?`,
+  `SELECT ${USER_COLUMNS} FROM users WHERE username = ?`,
 );
 
 const stmtFindUserById = db.prepare(
-  `SELECT id, username, email, pass_hash as passHash FROM users WHERE id = ?`,
+  `SELECT ${USER_COLUMNS} FROM users WHERE id = ?`,
 );
+
+const stmtUpdateUserProfile = db.prepare(`
+  UPDATE users SET avatar_url = ?, about = ? WHERE id = ?
+`);
+
+const stmtUpdateUserPassword = db.prepare(`
+  UPDATE users SET pass_hash = ? WHERE id = ?
+`);
 
 const stmtStoreRefresh = db.prepare(`
   INSERT OR REPLACE INTO refresh_tokens (token, user_id, created_at, expires_at, revoked_at)
@@ -461,6 +498,51 @@ const stmtGetPushSubscriptionsForUser = db.prepare(`
 
 const stmtDeletePushSubscriptionByEndpoint = db.prepare(`
   DELETE FROM push_subscriptions WHERE endpoint = ?
+`);
+
+const stmtInsertStatus = db.prepare(`
+  INSERT INTO statuses (id, username, type, text, media_url, bg_color, created_at, expires_at)
+  VALUES (@id, @username, @type, @text, @media_url, @bg_color, @created_at, @expires_at)
+`);
+
+const stmtGetActiveStatuses = db.prepare(`
+  SELECT id, username, type, text, media_url as mediaUrl, bg_color as bgColor,
+         created_at as createdAt, expires_at as expiresAt
+  FROM statuses
+  WHERE expires_at > ?
+  ORDER BY created_at ASC
+`);
+
+const stmtGetStatusById = db.prepare(`
+  SELECT id, username, type, text, media_url as mediaUrl, bg_color as bgColor,
+         created_at as createdAt, expires_at as expiresAt
+  FROM statuses WHERE id = ?
+`);
+
+const stmtDeleteStatus = db.prepare(`
+  DELETE FROM statuses WHERE id = ? AND username = ?
+`);
+
+const stmtDeleteExpiredStatuses = db.prepare(`
+  DELETE FROM statuses WHERE expires_at <= ?
+`);
+
+const stmtDeleteViewsForStatus = db.prepare(`
+  DELETE FROM status_views WHERE status_id = ?
+`);
+
+const stmtInsertStatusView = db.prepare(`
+  INSERT OR IGNORE INTO status_views (status_id, viewer_username, viewed_at)
+  VALUES (?, ?, ?)
+`);
+
+const stmtGetViewedStatusIdsForViewer = db.prepare(`
+  SELECT status_id as statusId FROM status_views WHERE viewer_username = ?
+`);
+
+const stmtGetViewersForStatus = db.prepare(`
+  SELECT viewer_username as username, viewed_at as viewedAt
+  FROM status_views WHERE status_id = ? ORDER BY viewed_at ASC
 `);
 
 function createUser({ id, username, email, passHash }) {
@@ -763,6 +845,92 @@ function deletePushSubscriptionByEndpoint(endpoint) {
   stmtDeletePushSubscriptionByEndpoint.run(String(endpoint));
 }
 
+function updateUserProfile(id, { avatarUrl, about }) {
+  stmtUpdateUserProfile.run(avatarUrl ?? null, about ?? null, String(id));
+}
+
+function updateUserPassword(id, passHash) {
+  stmtUpdateUserPassword.run(String(passHash), String(id));
+}
+
+const STATUS_TTL_MS = 24 * 60 * 60 * 1000;
+
+function addStatus({ id, username, type, text, mediaUrl, bgColor }) {
+  const createdAt = Date.now();
+  const expiresAt = createdAt + STATUS_TTL_MS;
+  const row = {
+    id: String(id),
+    username: String(username),
+    type: type === "image" ? "image" : "text",
+    text: text ? String(text) : null,
+    media_url: mediaUrl ? String(mediaUrl) : null,
+    bg_color: bgColor ? String(bgColor) : null,
+    created_at: createdAt,
+    expires_at: expiresAt,
+  };
+  stmtInsertStatus.run(row);
+  return {
+    id: row.id,
+    username: row.username,
+    type: row.type,
+    text: row.text,
+    mediaUrl: row.media_url,
+    bgColor: row.bg_color,
+    createdAt,
+    expiresAt,
+  };
+}
+
+// Every active (non-expired) status, each flagged with whether `viewerUsername`
+// has already seen it — own statuses are always reported as viewed.
+function getActiveStatusesFeed(viewerUsername) {
+  const rows = stmtGetActiveStatuses.all(Date.now());
+  const viewedIds = new Set(
+    stmtGetViewedStatusIdsForViewer
+      .all(String(viewerUsername))
+      .map((r) => r.statusId),
+  );
+  return rows.map((r) => ({
+    ...r,
+    viewed: r.username === viewerUsername || viewedIds.has(r.id),
+  }));
+}
+
+function getStatusById(id) {
+  return stmtGetStatusById.get(String(id));
+}
+
+function markStatusViewed(statusId, viewerUsername) {
+  stmtInsertStatusView.run(String(statusId), String(viewerUsername), Date.now());
+}
+
+function getStatusViewers(statusId) {
+  return stmtGetViewersForStatus.all(String(statusId));
+}
+
+function deleteStatus(id, ownerUsername) {
+  const result = stmtDeleteStatus.run(String(id), String(ownerUsername));
+  if (result.changes > 0) stmtDeleteViewsForStatus.run(String(id));
+  return result.changes > 0;
+}
+
+// Sweeps rows past expiry — the feed query already filters these out, so
+// this only exists to stop the table/uploaded media from growing forever.
+// Returns the removed rows' mediaUrl so the caller can delete the files.
+function deleteExpiredStatuses() {
+  const now = Date.now();
+  const expired = db
+    .prepare(`SELECT id, media_url as mediaUrl FROM statuses WHERE expires_at <= ?`)
+    .all(now);
+  if (expired.length === 0) return [];
+  const sweep = db.transaction(() => {
+    expired.forEach((row) => stmtDeleteViewsForStatus.run(row.id));
+    stmtDeleteExpiredStatuses.run(now);
+  });
+  sweep();
+  return expired;
+}
+
 module.exports = {
   db,
 
@@ -810,4 +978,15 @@ module.exports = {
   addPushSubscription,
   getPushSubscriptionsForUser,
   deletePushSubscriptionByEndpoint,
+
+  updateUserProfile,
+  updateUserPassword,
+
+  addStatus,
+  getActiveStatusesFeed,
+  getStatusById,
+  markStatusViewed,
+  getStatusViewers,
+  deleteStatus,
+  deleteExpiredStatuses,
 };

@@ -1,0 +1,123 @@
+.status-tab {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 4px;
+}
+
+.status-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  border-radius: 12px;
+  transition: background 0.15s ease;
+}
+
+.status-row:hover {
+  background: var(--chat-user-bg);
+}
+
+.status-avatar-ring {
+  position: relative;
+  flex-shrink: 0;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  padding: 2.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.status-avatar-ring.unviewed {
+  background: linear-gradient(135deg, #8fd9a8, #34a874 55%, #1e7f5c);
+}
+
+.status-avatar-ring.viewed,
+.status-avatar-ring.no-status {
+  background: var(--chat-user-border);
+}
+
+.status-avatar-ring.has-status {
+  background: linear-gradient(135deg, #8fd9a8, #34a874 55%, #1e7f5c);
+}
+
+.status-avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: var(--chat-user-bg);
+  color: var(--chat-user-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 18px;
+  overflow: hidden;
+  border: 2.5px solid var(--chat-card-bg);
+}
+
+.status-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.status-add-badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #34a874;
+  color: #0b0f1a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 14px;
+  border: 2px solid var(--chat-card-bg);
+  cursor: pointer;
+}
+
+.status-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.status-row-name {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--chat-title-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-row-sub {
+  font-size: 12.5px;
+  color: var(--chat-subtitle-color);
+}
+
+.status-others-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 6px;
+  border-top: 1px solid var(--chat-top-border);
+  padding-top: 6px;
+}
+
+.status-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--chat-subtitle-color);
+  font-size: 13.5px;
+}

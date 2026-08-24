@@ -142,3 +142,24 @@
   color: rgba(52, 168, 116, 1);
   background: rgba(52, 168, 116, 0.12);
 }
+
+.settings-profile-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border, rgba(255,255,255,0.12));
+  background: var(--input-bg, rgba(0,0,0,0.18));
+  color: var(--text, rgba(255,255,255,0.9));
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: 0.18s ease;
+}
+
+.settings-profile-btn:hover {
+  border-color: rgba(52, 168, 116, 0.5);
+  background: rgba(52, 168, 116, 0.10);
+}
