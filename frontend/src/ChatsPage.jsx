@@ -265,6 +265,75 @@ function VoicePlayer({ src }) {
 
 VoicePlayer.propTypes = { src: PropTypes.string.isRequired };
 
+/* ── Video note (round message) player — custom UI, not native <video>
+   controls, to match WhatsApp/Telegram's minimal circular player. ── */
+function VideoNotePlayer({ src }) {
+  const videoRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+
+  const toggle = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) v.play().catch(() => {});
+    else v.pause();
+  };
+
+  const remaining = Math.max(0, (duration || 0) - (currentTime || 0));
+
+  return (
+    <div className="video-note-player" onClick={toggle}>
+      <video
+        ref={videoRef}
+        src={src}
+        playsInline
+        preload="metadata"
+        onLoadedMetadata={() => {
+          const v = videoRef.current;
+          if (!v) return;
+          if (Number.isFinite(v.duration)) {
+            setDuration(v.duration);
+            return;
+          }
+          // Same Chrome/Android MediaRecorder webm quirk as voice messages
+          // — duration reports Infinity until forced to resolve.
+          const onTimeUpdate = () => {
+            v.removeEventListener("timeupdate", onTimeUpdate);
+            setDuration(Number.isFinite(v.duration) ? v.duration : 0);
+            v.currentTime = 0;
+          };
+          v.addEventListener("timeupdate", onTimeUpdate);
+          v.currentTime = 1e7;
+        }}
+        onDurationChange={() => {
+          const v = videoRef.current;
+          if (v && Number.isFinite(v.duration)) setDuration(v.duration);
+        }}
+        onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => {
+          setPlaying(false);
+          setCurrentTime(0);
+        }}
+      />
+      {!playing ? (
+        <span className="video-note-play-overlay">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff">
+            <polygon points="5,3 19,12 5,21" />
+          </svg>
+        </span>
+      ) : null}
+      <span className="video-note-duration">
+        {formatDuration(playing ? remaining : duration)}
+      </span>
+    </div>
+  );
+}
+
+VideoNotePlayer.propTypes = { src: PropTypes.string.isRequired };
+
 const ChatsPage = ({ user, onLogout }) => {
   const { t } = useLanguage();
   const { resolved: resolvedTheme } = useTheme();
@@ -1924,12 +1993,7 @@ const ChatsPage = ({ user, onLogout }) => {
                         className="msg-sticker-image"
                       />
                     ) : isVideoNote ? (
-                      <video
-                        src={m.attachmentUrl}
-                        controls
-                        playsInline
-                        className="msg-video-note"
-                      />
+                      <VideoNotePlayer src={m.attachmentUrl} />
                     ) : isVoice ? (
                       <VoicePlayer src={m.voiceUrl} />
                     ) : (
@@ -2129,6 +2193,35 @@ const ChatsPage = ({ user, onLogout }) => {
           ) : isVideoRecording ? (
             /* ── Video note recording UI ── */
             <div className="recording-row video-recording-row">
+              <button
+                className="chat-icon-btn recording-cancel video-recording-trash"
+                onClick={cancelVideoRecording}
+                type="button"
+                aria-label="Cancel video recording"
+              >
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                  <path d="M10 11v6M14 11v6M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                </svg>
+              </button>
+
+              <span className="recording-label video-recording-label">
+                {t("recording")}
+              </span>
+              <span className="recording-timer">
+                {formatDuration(videoRecordingTime)} / {formatDuration(MAX_VIDEO_NOTE_SECONDS)}
+              </span>
+
               <div className="video-recording-preview-wrap">
                 <video
                   ref={videoLivePreviewRef}
@@ -2137,31 +2230,8 @@ const ChatsPage = ({ user, onLogout }) => {
                   playsInline
                   autoPlay
                 />
-                <span className="recording-dot video-recording-dot" />
               </div>
-              <span className="recording-timer">
-                {formatDuration(videoRecordingTime)} / {formatDuration(MAX_VIDEO_NOTE_SECONDS)}
-              </span>
-              <button
-                className="chat-icon-btn recording-cancel"
-                onClick={cancelVideoRecording}
-                type="button"
-                aria-label="Cancel video recording"
-              >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
+
               <button
                 className="chat-send"
                 onClick={sendVideoNote}
