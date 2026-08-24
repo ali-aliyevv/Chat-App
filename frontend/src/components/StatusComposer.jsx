@@ -12,12 +12,13 @@ const STATUS_BG_PRESETS = [
   "linear-gradient(135deg, #37474f, #102027)",
 ];
 
-export default function StatusComposer({ onClose, onCreateText, onCreatePhoto }) {
+export default function StatusComposer({ onClose, onCreateText, onCreateMedia }) {
   const { t } = useLanguage();
   const [mode, setMode] = useState("text");
   const [text, setText] = useState("");
   const [bgIndex, setBgIndex] = useState(0);
   const [file, setFile] = useState(null);
+  const [isVideo, setIsVideo] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [caption, setCaption] = useState("");
   const [posting, setPosting] = useState(false);
@@ -35,22 +36,23 @@ export default function StatusComposer({ onClose, onCreateText, onCreatePhoto })
     e.target.value = "";
     if (!f) return;
     setFile(f);
+    setIsVideo(f.type.startsWith("video/"));
     setPreviewUrl(URL.createObjectURL(f));
-    setMode("photo");
+    setMode("media");
     setError(null);
   };
 
   const handlePost = async () => {
     setError(null);
     if (mode === "text" && !text.trim()) return;
-    if (mode === "photo" && !file) return;
+    if (mode === "media" && !file) return;
 
     setPosting(true);
     try {
       if (mode === "text") {
         await onCreateText(text.trim(), STATUS_BG_PRESETS[bgIndex]);
       } else {
-        await onCreatePhoto(file, caption.trim());
+        await onCreateMedia(file, caption.trim());
       }
       onClose();
     } catch {
@@ -77,10 +79,10 @@ export default function StatusComposer({ onClose, onCreateText, onCreatePhoto })
             </button>
             <button
               type="button"
-              className={`status-composer-tab ${mode === "photo" ? "active" : ""}`}
+              className={`status-composer-tab ${mode === "media" ? "active" : ""}`}
               onClick={() => fileInputRef.current?.click()}
             >
-              {t("statusPhotoOption")}
+              {t("statusMediaOption")}
             </button>
           </div>
         </div>
@@ -88,7 +90,7 @@ export default function StatusComposer({ onClose, onCreateText, onCreatePhoto })
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept="image/*,video/*"
           hidden
           onChange={handleFilePick}
         />
@@ -109,7 +111,13 @@ export default function StatusComposer({ onClose, onCreateText, onCreatePhoto })
           </div>
         ) : (
           <div className="status-composer-photo-preview">
-            {previewUrl ? <img src={previewUrl} alt="" /> : null}
+            {previewUrl ? (
+              isVideo ? (
+                <video src={previewUrl} controls playsInline />
+              ) : (
+                <img src={previewUrl} alt="" />
+              )
+            ) : null}
             <input
               className="status-composer-caption"
               placeholder={t("statusCaptionPlaceholder")}
@@ -151,5 +159,5 @@ export default function StatusComposer({ onClose, onCreateText, onCreatePhoto })
 StatusComposer.propTypes = {
   onClose: PropTypes.func.isRequired,
   onCreateText: PropTypes.func.isRequired,
-  onCreatePhoto: PropTypes.func.isRequired,
+  onCreateMedia: PropTypes.func.isRequired,
 };

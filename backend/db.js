@@ -861,7 +861,7 @@ function addStatus({ id, username, type, text, mediaUrl, bgColor }) {
   const row = {
     id: String(id),
     username: String(username),
-    type: type === "image" ? "image" : "text",
+    type: type === "image" ? "image" : type === "video" ? "video" : "text",
     text: text ? String(text) : null,
     media_url: mediaUrl ? String(mediaUrl) : null,
     bg_color: bgColor ? String(bgColor) : null,

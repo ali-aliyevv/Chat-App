@@ -321,13 +321,13 @@ app.get("/api/status", requireAuth, (req, res) => {
 
 app.post("/api/status", requireAuth, (req, res) => {
   const { type, text, mediaUrl, bgColor } = req.body || {};
-  const kind = type === "image" ? "image" : "text";
+  const kind = type === "image" ? "image" : type === "video" ? "video" : "text";
 
   if (kind === "text" && !String(text || "").trim()) {
     return res.status(400).json({ message: "Status text is required" });
   }
-  if (kind === "image" && !mediaUrl) {
-    return res.status(400).json({ message: "Status image is required" });
+  if ((kind === "image" || kind === "video") && !mediaUrl) {
+    return res.status(400).json({ message: "Status media is required" });
   }
 
   const status = addStatus({

@@ -526,8 +526,15 @@ const ChatsPage = ({ user, onLogout }) => {
       if (!historyLoadedRef.current) {
         historyLoadedRef.current = true;
         shouldAutoScrollRef.current = true;
-
         requestAnimationFrame(() => scrollToBottom("auto"));
+      }
+
+      // Fires on every room:history, not just the first — a reconnect (app
+      // reopened after being backgrounded/closed) resends the full history
+      // but was previously only marked read on the very first load, so a
+      // message that arrived while the app was closed never got its seen
+      // receipt even after the recipient actually looked at it.
+      if (shouldAutoScrollRef.current) {
         requestAnimationFrame(() => emitReadUpTo());
       }
     };
@@ -817,6 +824,21 @@ const ChatsPage = ({ user, onLogout }) => {
       socket.off("connect", emitVisibility);
     };
   }, []);
+
+  // Covers the case where the socket never actually dropped (so no fresh
+  // room:history arrives to trigger the catch-up above) — just switching
+  // apps and back on mobile, or alt-tabbing on desktop, without a real
+  // disconnect. Whatever's already loaded and scrolled to the bottom gets
+  // marked read now that the tab is actually being looked at again.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && shouldAutoScrollRef.current) {
+        emitReadUpTo();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [emitReadUpTo]);
 
   useEffect(() => {
     if (shouldAutoScrollRef.current) {
@@ -2222,7 +2244,7 @@ const ChatsPage = ({ user, onLogout }) => {
         <StatusComposer
           onClose={() => setShowStatusComposer(false)}
           onCreateText={status.createTextStatus}
-          onCreatePhoto={status.createImageStatus}
+          onCreateMedia={status.createMediaStatus}
         />
       ) : null}
 

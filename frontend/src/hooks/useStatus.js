@@ -95,12 +95,12 @@ export function useStatus(me) {
     return res.data;
   }, []);
 
-  const createImageStatus = useCallback(async (file, caption) => {
+  const createMediaStatus = useCallback(async (file, caption) => {
     const formData = new FormData();
     formData.append("file", file);
     const uploadRes = await api.post("/api/upload", formData);
     const res = await api.post("/api/status", {
-      type: "image",
+      type: file.type.startsWith("video/") ? "video" : "image",
       mediaUrl: uploadRes.data.url,
       text: caption || null,
     });
@@ -139,7 +139,7 @@ export function useStatus(me) {
     mine,
     othersGrouped,
     createTextStatus,
-    createImageStatus,
+    createMediaStatus,
     viewStatus,
     deleteStatus: deleteStatusById,
     getViewers,
