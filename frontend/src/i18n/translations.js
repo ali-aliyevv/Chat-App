@@ -110,6 +110,7 @@ export const translations = {
     emojiTab: "Emoji",
     stickersTab: "Stikerlər",
     addSticker: "Stiker əlavə et",
+    addToMyStickers: "Stikerlərimə əlavə et",
     noStickersYet: "Hələ stikeriniz yoxdur",
     deleteSticker: "Stikeri sil",
     // Settings
@@ -263,6 +264,7 @@ export const translations = {
     emojiTab: "Emoji",
     stickersTab: "Stickers",
     addSticker: "Add sticker",
+    addToMyStickers: "Add to my stickers",
     noStickersYet: "No stickers yet",
     deleteSticker: "Delete sticker",
     // Settings
@@ -416,6 +418,7 @@ export const translations = {
     emojiTab: "Эмодзи",
     stickersTab: "Стикеры",
     addSticker: "Добавить стикер",
+    addToMyStickers: "Добавить в мои стикеры",
     noStickersYet: "Стикеров пока нет",
     deleteSticker: "Удалить стикер",
      // Settings

@@ -146,6 +146,12 @@ const InfoIcon = () => (
   </svg>
 );
 
+const StarIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+  </svg>
+);
+
 const DocIcon = () => (
   <svg
     width="22"
@@ -938,7 +944,7 @@ const ChatsPage = ({ user, onLogout }) => {
             : "info"
           : dx > 0
             ? "reply"
-            : "info";
+            : null;
         const intensity = String(Math.min(1, Math.abs(clamped) / SWIPE_THRESHOLD));
         const row = el.closest(".msg");
         const replyIcon = row?.querySelector(".msg-swipe-icon.reply");
@@ -952,7 +958,9 @@ const ChatsPage = ({ user, onLogout }) => {
 
   const getSwipeAction = useCallback((isMine, dx) => {
     if (isMine) return dx < 0 ? "reply" : "info";
-    return dx > 0 ? "reply" : "info";
+    // Delivered/read info is only meaningful for messages you sent — a
+    // received message has no "info" swipe action.
+    return dx > 0 ? "reply" : null;
   }, []);
 
   const openMessageInfo = useCallback((msg, x, y) => {
@@ -976,7 +984,7 @@ const ChatsPage = ({ user, onLogout }) => {
           const action = getSwipeAction(isMine, s.dx);
           if (action === "reply") {
             replyToMessage(msg);
-          } else {
+          } else if (action === "info") {
             const rect = el?.getBoundingClientRect();
             openMessageInfo(
               msg,
@@ -1110,6 +1118,31 @@ const ChatsPage = ({ user, onLogout }) => {
       /* sticker tray will resync on next open if this silently failed */
     }
   }, []);
+
+  // "Favorite" a sticker seen in the chat (yours or theirs) into your own
+  // tray, same as WhatsApp's "add to my stickers". Refetches first so the
+  // dedupe check isn't fooled by a stale/never-loaded local sticker list.
+  const handleFavoriteSticker = useCallback(async (msg) => {
+    if (!msg?.attachmentUrl) return;
+    try {
+      const res = await api.get("/api/stickers");
+      const existing = Array.isArray(res.data) ? res.data : [];
+      stickersLoadedRef.current = true;
+
+      if (existing.some((s) => s.url === msg.attachmentUrl)) {
+        setStickers(existing);
+        return;
+      }
+      const stickerRes = await api.post("/api/stickers", {
+        url: msg.attachmentUrl,
+        name: msg.attachmentName || "sticker",
+      });
+      setStickers([stickerRes.data, ...existing]);
+    } catch {
+      setUploadError(t("uploadFailed"));
+      setTimeout(() => setUploadError(null), 4000);
+    }
+  }, [t]);
 
   const sendSticker = useCallback(
     (sticker) => {
@@ -1646,11 +1679,15 @@ const ChatsPage = ({ user, onLogout }) => {
                       >
                         <ReplyIcon />
                       </span>
-                      <span
-                        className={`msg-swipe-icon info ${isMine ? "side-left" : "side-right"}`}
-                      >
-                        <InfoIcon />
-                      </span>
+                      {/* Delivered/read info only makes sense for messages
+                          you sent — a received message has nothing of the
+                          sort to show, so the swipe-to-info side is only
+                          wired up (and shown) on your own messages. */}
+                      {isMine ? (
+                        <span className="msg-swipe-icon info side-left">
+                          <InfoIcon />
+                        </span>
+                      ) : null}
                     </>
                   ) : null}
                   {!m.system ? (
@@ -2111,10 +2148,25 @@ const ChatsPage = ({ user, onLogout }) => {
             {t("reply")}
           </button>
 
-          <button className="context-menu-item" onClick={handleShowInfo}>
-            <InfoIcon />
-            {t("messageInfo")}
-          </button>
+          {contextMenu.message.type === "sticker" ? (
+            <button
+              className="context-menu-item"
+              onClick={() => {
+                handleFavoriteSticker(contextMenu.message);
+                setContextMenu(null);
+              }}
+            >
+              <StarIcon />
+              {t("addToMyStickers")}
+            </button>
+          ) : null}
+
+          {contextMenu.message.username === me ? (
+            <button className="context-menu-item" onClick={handleShowInfo}>
+              <InfoIcon />
+              {t("messageInfo")}
+            </button>
+          ) : null}
 
           {contextMenu.message.username === me &&
           contextMenu.message.type !== "voice" ? (
