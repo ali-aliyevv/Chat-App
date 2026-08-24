@@ -745,6 +745,28 @@ const ChatsPage = ({ user, onLogout }) => {
     };
   }, [room, onLogout, me, scrollToBottom, emitReadUpTo]);
 
+  // Let the server know whether this tab is actually being looked at, so it
+  // can decide whether an incoming message needs a push notification. A
+  // connected socket alone isn't enough — mobile browsers/PWAs keep the
+  // connection alive for a while after being backgrounded or closed, during
+  // which the server would otherwise think the user is "online" and skip
+  // the push even though nothing is visibly showing the message.
+  useEffect(() => {
+    const emitVisibility = () => {
+      if (!socket.connected) return;
+      socket.emit("presence:visibility", {
+        visible: document.visibilityState === "visible",
+      });
+    };
+    emitVisibility();
+    document.addEventListener("visibilitychange", emitVisibility);
+    socket.on("connect", emitVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", emitVisibility);
+      socket.off("connect", emitVisibility);
+    };
+  }, []);
+
   useEffect(() => {
     if (shouldAutoScrollRef.current) {
       requestAnimationFrame(() => scrollToBottom("smooth"));
@@ -1384,26 +1406,27 @@ const ChatsPage = ({ user, onLogout }) => {
     return out;
   }, [messages, labelForDayKey]);
 
+  // "seen" is derived from the persistent m.readAt (survives a history
+  // reload on reconnect) rather than the ephemeral m.status string the
+  // server never sends back — status is only meaningful for the local,
+  // pre-ack "sending" state.
   const renderStatus = (m) => {
     if (m.system) return null;
     if (m.username !== me) return null;
 
-    const s = m.status || "delivered";
-    if (s === "sending")
+    if (m.status === "sending")
       return <span className="msg-status sending">{t("sendingStatus")}</span>;
-    if (s === "delivered")
-      return <span className="msg-status delivered">&#10003;</span>;
-    if (s === "seen") {
+    if (m.readAt) {
       return (
         <span
           className="msg-status seen"
-          title={m.readAt ? `${t("read")}: ${formatTime(m.readAt)}` : t("read")}
+          title={`${t("read")}: ${formatTime(m.readAt)}`}
         >
           &#10003;&#10003;
         </span>
       );
     }
-    return null;
+    return <span className="msg-status delivered">&#10003;</span>;
   };
 
   return (
@@ -1658,7 +1681,7 @@ const ChatsPage = ({ user, onLogout }) => {
                     {isMine && !isDeleted ? (
                       <div className="msg-statusWrap">
                         {renderStatus(m)}
-                        {m.status === "seen" && m.readAt ? (
+                        {m.readAt ? (
                           <span className="msg-read-time">
                             {formatTime(m.readAt)}
                           </span>

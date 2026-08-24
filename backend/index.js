@@ -592,6 +592,15 @@ const roomUsers = new Map();
 const onlineSockets = new Map(); // username -> socket.id
 const pendingLeaves = new Map(); // username -> timeout handle
 
+// Whether the user's tab/app is actually foregrounded right now (Page
+// Visibility API, reported by the client). A socket can stay connected for
+// a while after the app is backgrounded/closed on mobile, so this is the
+// signal that decides whether a new message still needs a push
+// notification — defaults to visible so a message sent in the instant
+// between connecting and the client's first visibility report isn't
+// double-notified.
+const visibleUsers = new Map(); // username -> boolean
+
 // How long to wait after a socket disconnects before treating the user as
 // actually gone (ending their call, posting "left", dropping them from the
 // room). Covers brief network blips and mobile backgrounding/screen-lock,
@@ -760,6 +769,12 @@ io.on("connection", (socket) => {
     emitUsers(r);
   });
 
+  socket.on("presence:visibility", ({ visible }) => {
+    const u = socket.user?.username;
+    if (!u) return;
+    visibleUsers.set(u, !!visible);
+  });
+
   socket.on(
     "message:send",
     ({ room, text, clientId, replyTo, attachment, type, voiceData }) => {
@@ -827,14 +842,21 @@ io.on("connection", (socket) => {
       const otherUser = Array.from(roomUsers.get(r) || []).find(
         (x) => x !== socket.user.username,
       );
-      if (otherUser && onlineSockets.has(otherUser)) {
+      const otherIsOnline = otherUser && onlineSockets.has(otherUser);
+      if (otherIsOnline) {
         const { deliveredAt } = markDeliveredForRoomExceptUser(
           r,
           socket.user.username,
           msg.createdAt,
         );
         msg.deliveredAt = deliveredAt;
-      } else if (otherUser) {
+      }
+
+      // Push whenever the recipient isn't actually looking at the app right
+      // now — either fully offline, or connected but backgrounded/closed
+      // (a socket can outlive that by a while on mobile, so "online" alone
+      // isn't a reliable signal that they'll see the in-app message).
+      if (otherUser && (!otherIsOnline || visibleUsers.get(otherUser) === false)) {
         let preview = t;
         if (msgType === "voice") preview = "🎤 Səs mesajı";
         else if (msgType === "sticker") preview = "Stiker göndərdi";
@@ -1171,6 +1193,7 @@ function maybeEndCall(callId) {
 function finalizeDisconnect(u, r, socketId) {
   if (onlineSockets.get(u) === socketId) {
     onlineSockets.delete(u);
+    visibleUsers.delete(u);
   }
 
   const callId = activeCallByUser.get(u);
