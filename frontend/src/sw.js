@@ -22,14 +22,19 @@ self.addEventListener("push", (event) => {
     data = { title: "RealChat", body: event.data ? event.data.text() : "" };
   }
 
+  const isCall = data.type === "call";
   const title = data.title || "RealChat";
   const options = {
     body: data.body || "",
     icon: "/icon-192.png",
     badge: "/icon-192.png",
     data: { room: data.room || null },
-    tag: data.room ? `room-${data.room}` : undefined,
+    // Calls get their own tag so a later message notification never
+    // silently replaces/dismisses a missed-call alert, and stay on screen
+    // until the user acts instead of auto-dismissing like a message toast.
+    tag: isCall ? `call-${data.room || "any"}` : data.room ? `room-${data.room}` : undefined,
     renotify: true,
+    requireInteraction: isCall,
   };
 
   event.waitUntil(self.registration.showNotification(title, options));

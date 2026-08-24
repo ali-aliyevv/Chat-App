@@ -1015,6 +1015,18 @@ io.on("connection", (socket) => {
           participants: callSnapshot(session),
         });
       }
+
+      // A connected-but-backgrounded socket won't render the incoming-call
+      // screen (the app is suspended), so push a notification the same way
+      // an offline recipient would get one for a message.
+      if (visibleUsers.get(u) === false) {
+        sendPushToUser(u, {
+          title: starter,
+          body: type === "video" ? "📹 Görüntülü zəng" : "📞 Səsli zəng",
+          room: r,
+          type: "call",
+        }).catch((err) => console.log("❌ Call push notify error:", err?.message || err));
+      }
     });
   });
 
