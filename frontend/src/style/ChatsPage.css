@@ -1282,51 +1282,53 @@ body {
   border-color: rgba(255, 60, 60, 0.5) !important;
 }
 
-/* ── Video note recording panel (Telegram/WhatsApp-style: a large
-   floating circular preview, not squeezed into the normal input row) ── */
-.video-recording-panel {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.video-recording-trash-btn,
-.video-recording-send {
-  flex-shrink: 0;
-}
-
-.video-recording-trash-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 60, 60, 0.3);
-  background: rgba(255, 60, 60, 0.08);
-  color: #ff5c5c;
-  cursor: pointer;
-  transition: 0.18s ease;
-}
-.video-recording-trash-btn:hover {
-  background: rgba(255, 60, 60, 0.14);
-  border-color: rgba(255, 60, 60, 0.5);
-}
-
-.video-recording-center {
-  flex: 1;
+/* ── Video note recording — fullscreen, matching the native iOS
+   "Video Note" camera style (black backdrop, large centered circular
+   preview, close top-left, timer top-center, stop/send at the bottom). ── */
+.video-record-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 2300;
+  background: #000;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  animation: ctxFadeIn 0.15s ease;
 }
 
-.video-recording-timer-row {
+.video-record-close {
+  position: absolute;
+  top: calc(18px + env(safe-area-inset-top));
+  left: 18px;
+  z-index: 2;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.video-record-timer-badge {
+  position: absolute;
+  top: calc(22px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .video-recording-rec-dot {
@@ -1337,39 +1339,114 @@ body {
   animation: recPulse 1s ease-in-out infinite;
 }
 
-.video-recording-timer {
-  font-size: 13px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--chat-bubble-text);
+.video-record-circle-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.video-recording-preview-wrap {
-  position: relative;
-  width: 120px;
-  height: 120px;
-  border-radius: 50%;
-  animation: videoRecRingPulse 1.4s ease-in-out infinite;
-}
-
-@keyframes videoRecRingPulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
-  50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
-}
-
-.video-recording-preview {
-  width: 100%;
-  height: 100%;
+.video-record-circle {
+  width: min(72vw, 300px);
+  height: min(72vw, 300px);
   border-radius: 50%;
   object-fit: cover;
-  background: #05070d;
-  border: 3px solid #ef4444;
+  background: #111;
   transform: scaleX(-1);
 }
 
-@media (max-width: 480px) {
-  .video-recording-preview-wrap {
-    width: 96px;
-    height: 96px;
-  }
+.video-record-controls {
+  padding-bottom: calc(36px + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.video-record-stop-btn {
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  border: 4px solid rgba(255, 255, 255, 0.85);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.video-record-stop-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: #ef4444;
+}
+
+/* ── Attach bottom sheet (WhatsApp-style +) ── */
+.attach-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2050;
+  background: rgba(5, 8, 16, 0.4);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  animation: ctxFadeIn 0.15s ease;
+}
+
+.attach-sheet {
+  width: min(420px, 100%);
+  background: var(--chat-ctx-bg);
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  padding: 10px 20px calc(20px + env(safe-area-inset-bottom));
+  box-shadow: 0 -16px 48px rgba(0, 0, 0, 0.25);
+}
+
+.attach-sheet-drag-bar {
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--chat-ctx-border);
+  margin: 4px auto 16px;
+}
+
+.attach-sheet-options {
+  display: flex;
+  justify-content: space-around;
+  gap: 8px;
+}
+
+.attach-sheet-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--chat-ctx-text);
+  font-size: 12px;
+  font-weight: 600;
+  max-width: 92px;
+}
+
+.attach-sheet-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.attach-sheet-icon.media {
+  background: linear-gradient(135deg, #b39ddb, #7e57c2);
+}
+.attach-sheet-icon.camera {
+  background: linear-gradient(135deg, #ff8a80, #ff5252);
+}
+.attach-sheet-icon.document {
+  background: linear-gradient(135deg, #64b5f6, #1e88e5);
 }

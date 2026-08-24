@@ -22,6 +22,7 @@ import StatusTab from "./components/StatusTab";
 import StatusComposer from "./components/StatusComposer";
 import StatusViewer from "./components/StatusViewer";
 import ProfileSettingsModal from "./components/ProfileSettingsModal";
+import { isIOSDevice, createCounterMirroredStream } from "./utils/cameraStream";
 import "./style/ChatsPage.css";
 
 function formatTime(createdAt) {
@@ -167,6 +168,14 @@ const DocIcon = () => (
   >
     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
     <polyline points="14 2 14 8 20 8" />
+  </svg>
+);
+
+const MediaIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+    <circle cx="8.5" cy="8.5" r="1.5" />
+    <polyline points="21 15 16 10 5 21" />
   </svg>
 );
 
@@ -447,11 +456,15 @@ const ChatsPage = ({ user, onLogout }) => {
   const videoChunksRef = useRef([]);
   const videoRecordingTimerRef = useRef(null);
   const videoLivePreviewRef = useRef(null);
+  const videoRawStreamRef = useRef(null);
+  const videoProcessedCleanupRef = useRef(null);
 
   const messagesBoxRef = useRef(null);
   const shouldAutoScrollRef = useRef(true);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [attachAccept, setAttachAccept] = useState("");
 
   const refreshTriedRef = useRef(false);
   const didLogoutRef = useRef(false);
@@ -1395,16 +1408,28 @@ const ChatsPage = ({ user, onLogout }) => {
   }, [stopRecording, room, me, replyingTo, scrollToBottom, t]);
 
   /* ── Video note (round video message, Telegram/WhatsApp style) ── */
+  // The recorder may be running against a synthetic canvas stream (the iOS
+  // mirror counter-flip) rather than the raw camera stream — stopping its
+  // tracks alone won't release the camera or halt the canvas draw loop.
+  const releaseVideoCapture = useCallback(() => {
+    videoRawStreamRef.current?.getTracks().forEach((tr) => tr.stop());
+    videoRawStreamRef.current = null;
+    videoProcessedCleanupRef.current?.();
+    videoProcessedCleanupRef.current = null;
+  }, []);
+
   const stopVideoRecording = useCallback(() => {
     return new Promise((resolve) => {
       const recorder = videoRecorderRef.current;
       if (!recorder || recorder.state === "inactive") {
+        releaseVideoCapture();
         resolve(null);
         return;
       }
 
       recorder.onstop = () => {
         recorder.stream?.getTracks().forEach((tr) => tr.stop());
+        releaseVideoCapture();
         const blob = new Blob(videoChunksRef.current, {
           type: recorder.mimeType || "video/webm",
         });
@@ -1415,21 +1440,24 @@ const ChatsPage = ({ user, onLogout }) => {
       setIsVideoRecording(false);
       clearInterval(videoRecordingTimerRef.current);
     });
-  }, []);
+  }, [releaseVideoCapture]);
 
   const cancelVideoRecording = useCallback(() => {
     const recorder = videoRecorderRef.current;
     if (recorder && recorder.state !== "inactive") {
       recorder.onstop = () => {
         recorder.stream?.getTracks().forEach((tr) => tr.stop());
+        releaseVideoCapture();
       };
       recorder.stop();
+    } else {
+      releaseVideoCapture();
     }
     setIsVideoRecording(false);
     setVideoRecordingTime(0);
     clearInterval(videoRecordingTimerRef.current);
     videoChunksRef.current = [];
-  }, []);
+  }, [releaseVideoCapture]);
 
   const sendVideoNote = useCallback(async () => {
     const blob = await stopVideoRecording();
@@ -1510,6 +1538,18 @@ const ChatsPage = ({ user, onLogout }) => {
         video: { facingMode: "user" },
         audio: true,
       });
+      videoRawStreamRef.current = stream;
+
+      // iOS Safari hands back an already-mirrored front-camera stream —
+      // counter-flip it before it ever reaches MediaRecorder, otherwise
+      // the saved/sent clip comes out backwards for everyone who views it.
+      let recordingStream = stream;
+      if (isIOSDevice()) {
+        const processed = createCounterMirroredStream(stream);
+        recordingStream = processed.stream;
+        videoProcessedCleanupRef.current = processed.cleanup;
+      }
+
       const mimeCandidates = [
         "video/webm;codecs=vp9,opus",
         "video/webm;codecs=vp8,opus",
@@ -1520,7 +1560,7 @@ const ChatsPage = ({ user, onLogout }) => {
         window.MediaRecorder?.isTypeSupported?.(c),
       );
       const recorder = new MediaRecorder(
-        stream,
+        recordingStream,
         mimeType ? { mimeType } : undefined,
       );
       videoChunksRef.current = [];
@@ -1529,7 +1569,7 @@ const ChatsPage = ({ user, onLogout }) => {
         if (e.data.size > 0) videoChunksRef.current.push(e.data);
       };
       recorder.onstop = () => {
-        stream.getTracks().forEach((tr) => tr.stop());
+        recordingStream.getTracks().forEach((tr) => tr.stop());
       };
 
       videoRecorderRef.current = recorder;
@@ -1625,8 +1665,25 @@ const ChatsPage = ({ user, onLogout }) => {
 
   const handleAttachClick = useCallback(() => {
     if (editingMessage) return;
-    fileInputRef.current?.click();
+    setShowAttachMenu(true);
   }, [editingMessage]);
+
+  const handlePickMedia = useCallback(() => {
+    setShowAttachMenu(false);
+    setAttachAccept("image/*,video/*");
+    requestAnimationFrame(() => fileInputRef.current?.click());
+  }, []);
+
+  const handlePickDocument = useCallback(() => {
+    setShowAttachMenu(false);
+    setAttachAccept("");
+    requestAnimationFrame(() => fileInputRef.current?.click());
+  }, []);
+
+  const handlePickCamera = useCallback(() => {
+    setShowAttachMenu(false);
+    startVideoRecording();
+  }, [startVideoRecording]);
 
   const handleFileChange = useCallback(
     async (e) => {
@@ -2125,6 +2182,7 @@ const ChatsPage = ({ user, onLogout }) => {
           <input
             ref={fileInputRef}
             type="file"
+            accept={attachAccept}
             onChange={handleFileChange}
             style={{ display: "none" }}
           />
@@ -2174,71 +2232,6 @@ const ChatsPage = ({ user, onLogout }) => {
                 onClick={sendVoice}
                 type="button"
                 aria-label="Send voice"
-              >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <line x1="22" y1="2" x2="11" y2="13" />
-                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                </svg>
-              </button>
-            </div>
-          ) : isVideoRecording ? (
-            /* ── Video note recording UI (Telegram/WhatsApp-style: a large
-               floating circular preview, not squeezed into the input row) ── */
-            <div className="video-recording-panel">
-              <button
-                className="video-recording-trash-btn"
-                onClick={cancelVideoRecording}
-                type="button"
-                aria-label="Cancel video recording"
-              >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <polyline points="3 6 5 6 21 6" />
-                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                  <path d="M10 11v6M14 11v6M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                </svg>
-              </button>
-
-              <div className="video-recording-center">
-                <div className="video-recording-timer-row">
-                  <span className="video-recording-rec-dot" />
-                  <span className="video-recording-timer">
-                    {formatDuration(videoRecordingTime)}
-                  </span>
-                </div>
-                <div className="video-recording-preview-wrap">
-                  <video
-                    ref={videoLivePreviewRef}
-                    className="video-recording-preview"
-                    muted
-                    playsInline
-                    autoPlay
-                  />
-                </div>
-              </div>
-
-              <button
-                className="chat-send video-recording-send"
-                onClick={sendVideoNote}
-                type="button"
-                aria-label="Send video note"
               >
                 <svg
                   width="20"
@@ -2663,6 +2656,74 @@ const ChatsPage = ({ user, onLogout }) => {
           onDelete={status.deleteStatus}
           getViewers={status.getViewers}
         />
+      ) : null}
+
+      {showAttachMenu ? (
+        /* ── WhatsApp-style attach bottom sheet ── */
+        <div className="attach-sheet-overlay" onClick={() => setShowAttachMenu(false)}>
+          <div className="attach-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="attach-sheet-drag-bar" />
+            <div className="attach-sheet-options">
+              <button type="button" className="attach-sheet-option" onClick={handlePickMedia}>
+                <span className="attach-sheet-icon media"><MediaIcon /></span>
+                {t("attachMediaOption")}
+              </button>
+              <button type="button" className="attach-sheet-option" onClick={handlePickCamera}>
+                <span className="attach-sheet-icon camera"><CallVideoIcon /></span>
+                {t("attachCameraOption")}
+              </button>
+              <button type="button" className="attach-sheet-option" onClick={handlePickDocument}>
+                <span className="attach-sheet-icon document"><DocIcon /></span>
+                {t("attachDocumentOption")}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isVideoRecording ? (
+        /* ── Fullscreen video-note recording (native iOS "Video Note"
+           camera style: black backdrop, large centered circular preview,
+           top-left close, top-center timer, bottom stop/send). ── */
+        <div className="video-record-fullscreen">
+          <button
+            type="button"
+            className="video-record-close"
+            onClick={cancelVideoRecording}
+            aria-label="Cancel video recording"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="6" y1="6" x2="18" y2="18" />
+              <line x1="18" y1="6" x2="6" y2="18" />
+            </svg>
+          </button>
+
+          <div className="video-record-timer-badge">
+            <span className="video-recording-rec-dot" />
+            {formatDuration(videoRecordingTime)}
+          </div>
+
+          <div className="video-record-circle-wrap">
+            <video
+              ref={videoLivePreviewRef}
+              className="video-record-circle"
+              muted
+              playsInline
+              autoPlay
+            />
+          </div>
+
+          <div className="video-record-controls">
+            <button
+              type="button"
+              className="video-record-stop-btn"
+              onClick={sendVideoNote}
+              aria-label="Stop and send video note"
+            >
+              <span className="video-record-stop-icon" />
+            </button>
+          </div>
+        </div>
       ) : null}
     </div>
   );
