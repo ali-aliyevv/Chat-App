@@ -1031,7 +1031,10 @@ io.on("connection", (socket) => {
       const r =
         String(room || socket.data.room || "general").trim() || "general";
       const msgType =
-        type === "voice" ? "voice" : type === "sticker" ? "sticker" : "text";
+        type === "voice" ? "voice" :
+        type === "sticker" ? "sticker" :
+        type === "video_note" ? "video_note" :
+        "text";
       const t = String(text || "").trim();
 
       let att = null;
@@ -1048,6 +1051,7 @@ io.on("connection", (socket) => {
 
       if (msgType === "voice" && !voiceData) return;
       if (msgType === "sticker" && !att) return;
+      if (msgType === "video_note" && !att) return;
       if (msgType === "text" && !t && !att) return;
 
       let replyToData = null;
@@ -1110,6 +1114,7 @@ io.on("connection", (socket) => {
         let preview = t;
         if (msgType === "voice") preview = "🎤 Səs mesajı";
         else if (msgType === "sticker") preview = "Stiker göndərdi";
+        else if (msgType === "video_note") preview = "🎥 Video mesaj";
         else if (att && !t) preview = `📎 ${att.name}`;
         if (preview && preview.length > 120) preview = preview.slice(0, 120) + "...";
 

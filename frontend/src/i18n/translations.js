@@ -86,6 +86,7 @@ export const translations = {
     expandCall: "Böyüt",
     voiceMessage: "Səs mesajı",
     recording: "Yazılır...",
+    recordVideoNote: "Video mesaj çək",
     // Call history
     chatsTab: "Söhbət",
     callsTab: "Zənglər",
@@ -240,6 +241,7 @@ export const translations = {
     expandCall: "Expand",
     voiceMessage: "Voice message",
     recording: "Recording...",
+    recordVideoNote: "Record video message",
     // Call history
     chatsTab: "Chats",
     callsTab: "Calls",
@@ -394,6 +396,7 @@ export const translations = {
     expandCall: "Развернуть",
     voiceMessage: "Голосовое сообщение",
     recording: "Запись...",
+    recordVideoNote: "Записать видеосообщение",
     // Call history
     chatsTab: "Чаты",
     callsTab: "Звонки",

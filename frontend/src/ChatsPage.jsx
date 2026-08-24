@@ -94,6 +94,7 @@ function formatFileSize(bytes) {
 
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 const BOT_USERNAME = "🤖 Bot";
+const MAX_VIDEO_NOTE_SECONDS = 60;
 
 const AttachIcon = () => (
   <svg
@@ -369,6 +370,14 @@ const ChatsPage = ({ user, onLogout }) => {
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const recordingTimerRef = useRef(null);
+
+  /* ── Video note (round video message) recording state ── */
+  const [isVideoRecording, setIsVideoRecording] = useState(false);
+  const [videoRecordingTime, setVideoRecordingTime] = useState(0);
+  const videoRecorderRef = useRef(null);
+  const videoChunksRef = useRef([]);
+  const videoRecordingTimerRef = useRef(null);
+  const videoLivePreviewRef = useRef(null);
 
   const messagesBoxRef = useRef(null);
   const shouldAutoScrollRef = useRef(true);
@@ -1035,7 +1044,7 @@ const ChatsPage = ({ user, onLogout }) => {
   const handleStartEdit = useCallback(() => {
     if (!contextMenu?.message) return;
     const m = contextMenu.message;
-    if (m.type === "voice") return; // cannot edit voice messages
+    if (["voice", "sticker", "video_note"].includes(m.type)) return; // media-only messages aren't editable
     setEditingMessage({ id: m.id, text: m.text });
     setText(m.text);
     setReplyingTo(null);
@@ -1316,6 +1325,179 @@ const ChatsPage = ({ user, onLogout }) => {
     reader.readAsDataURL(blob);
   }, [stopRecording, room, me, replyingTo, scrollToBottom, t]);
 
+  /* ── Video note (round video message, Telegram/WhatsApp style) ── */
+  const stopVideoRecording = useCallback(() => {
+    return new Promise((resolve) => {
+      const recorder = videoRecorderRef.current;
+      if (!recorder || recorder.state === "inactive") {
+        resolve(null);
+        return;
+      }
+
+      recorder.onstop = () => {
+        recorder.stream?.getTracks().forEach((tr) => tr.stop());
+        const blob = new Blob(videoChunksRef.current, {
+          type: recorder.mimeType || "video/webm",
+        });
+        resolve(blob);
+      };
+
+      recorder.stop();
+      setIsVideoRecording(false);
+      clearInterval(videoRecordingTimerRef.current);
+    });
+  }, []);
+
+  const cancelVideoRecording = useCallback(() => {
+    const recorder = videoRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.onstop = () => {
+        recorder.stream?.getTracks().forEach((tr) => tr.stop());
+      };
+      recorder.stop();
+    }
+    setIsVideoRecording(false);
+    setVideoRecordingTime(0);
+    clearInterval(videoRecordingTimerRef.current);
+    videoChunksRef.current = [];
+  }, []);
+
+  const sendVideoNote = useCallback(async () => {
+    const blob = await stopVideoRecording();
+    setVideoRecordingTime(0);
+    if (!blob || blob.size === 0) return;
+
+    shouldAutoScrollRef.current = true;
+    const tmpId = `tmp_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const nowIso = new Date().toISOString();
+    const replyToId = replyingTo?.id || null;
+    const localPreviewUrl = URL.createObjectURL(blob);
+
+    const optimistic = {
+      id: tmpId,
+      room,
+      clientId: tmpId,
+      username: me,
+      text: "",
+      system: false,
+      createdAt: nowIso,
+      status: "uploading",
+      replyTo: replyToId,
+      replyToData: replyingTo
+        ? {
+            id: replyingTo.id,
+            username: replyingTo.username,
+            text: truncate(replyingTo.text, 80),
+          }
+        : null,
+      editedAt: null,
+      deletedForAll: 0,
+      type: "video_note",
+      attachmentUrl: localPreviewUrl,
+      attachmentName: "video_note.webm",
+      attachmentType: blob.type || "video/webm",
+      attachmentSize: blob.size,
+    };
+
+    setMessages((prev) => mergeMessages(prev, [optimistic]));
+    setReplyingTo(null);
+    requestAnimationFrame(() => scrollToBottom("smooth"));
+
+    try {
+      const file = new File([blob], "video_note.webm", {
+        type: blob.type || "video/webm",
+      });
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await api.post("/api/upload", formData);
+      const { url, name, type, size } = res.data;
+
+      setMessages((prev) =>
+        prev.map((m) =>
+          String(m.id) === tmpId
+            ? { ...m, status: "sending", attachmentUrl: url }
+            : m,
+        ),
+      );
+
+      socket.emit("message:send", {
+        room,
+        text: "",
+        clientId: tmpId,
+        replyTo: replyToId,
+        type: "video_note",
+        attachment: { url, name, type, size },
+      });
+    } catch {
+      setMessages((prev) => prev.filter((m) => String(m.id) !== tmpId));
+      setUploadError(t("uploadFailed"));
+      setTimeout(() => setUploadError(null), 4000);
+    }
+  }, [stopVideoRecording, room, me, replyingTo, scrollToBottom, t]);
+
+  const startVideoRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user" },
+        audio: true,
+      });
+      const mimeCandidates = [
+        "video/webm;codecs=vp9,opus",
+        "video/webm;codecs=vp8,opus",
+        "video/webm",
+        "video/mp4",
+      ];
+      const mimeType = mimeCandidates.find((c) =>
+        window.MediaRecorder?.isTypeSupported?.(c),
+      );
+      const recorder = new MediaRecorder(
+        stream,
+        mimeType ? { mimeType } : undefined,
+      );
+      videoChunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) videoChunksRef.current.push(e.data);
+      };
+      recorder.onstop = () => {
+        stream.getTracks().forEach((tr) => tr.stop());
+      };
+
+      videoRecorderRef.current = recorder;
+      recorder.start();
+      setIsVideoRecording(true);
+      setVideoRecordingTime(0);
+
+      // Auto-send once the cap is hit, matching WhatsApp/Telegram's video
+      // notes rather than leaving the recorder running indefinitely.
+      videoRecordingTimerRef.current = setInterval(() => {
+        setVideoRecordingTime((prev) => {
+          const next = prev + 1;
+          if (next >= MAX_VIDEO_NOTE_SECONDS) {
+            clearInterval(videoRecordingTimerRef.current);
+            sendVideoNote();
+          }
+          return next;
+        });
+      }, 1000);
+    } catch {
+      /* user denied camera/mic access */
+    }
+  }, [sendVideoNote]);
+
+  // The live preview <video> only exists in the DOM once isVideoRecording
+  // flips true and React re-renders — binding srcObject synchronously
+  // inside startVideoRecording() ran before that render committed, so the
+  // ref was always null. Bind it here instead, once it's actually mounted.
+  useEffect(() => {
+    if (!isVideoRecording) return;
+    const el = videoLivePreviewRef.current;
+    const stream = videoRecorderRef.current?.stream;
+    if (!el || !stream) return;
+    el.srcObject = stream;
+    el.play().catch(() => {});
+  }, [isVideoRecording]);
+
   const send = () => {
     const clean = text.trim();
     if (!clean) return;
@@ -1394,7 +1576,8 @@ const ChatsPage = ({ user, onLogout }) => {
       const tmpId = `tmp_${Date.now()}_${Math.random().toString(16).slice(2)}`;
       const nowIso = new Date().toISOString();
       const isImage = file.type.startsWith("image/");
-      const localPreviewUrl = isImage ? URL.createObjectURL(file) : null;
+      const isVideo = file.type.startsWith("video/");
+      const localPreviewUrl = isImage || isVideo ? URL.createObjectURL(file) : null;
       const caption = text.trim();
       const replyToId = replyingTo?.id || null;
 
@@ -1662,6 +1845,7 @@ const ChatsPage = ({ user, onLogout }) => {
               const isDeleted = !!m.deletedForAll;
               const isVoice = m.type === "voice" && m.voiceUrl;
               const isSticker = m.type === "sticker" && m.attachmentUrl;
+              const isVideoNote = m.type === "video_note" && m.attachmentUrl;
               const displayText = getDisplayText(m);
 
               return (
@@ -1712,7 +1896,7 @@ const ChatsPage = ({ user, onLogout }) => {
                   ) : null}
 
                   <div
-                    className={`msg-bubble ${isDeleted ? "deleted" : ""} ${isSticker && !isDeleted ? "sticker" : ""}`}
+                    className={`msg-bubble ${isDeleted ? "deleted" : ""} ${isSticker && !isDeleted ? "sticker" : ""} ${isVideoNote && !isDeleted ? "video-note" : ""}`}
                     ref={(el) => {
                       if (el) msgRowRefs.current.set(m.id, el);
                       else msgRowRefs.current.delete(m.id);
@@ -1739,6 +1923,13 @@ const ChatsPage = ({ user, onLogout }) => {
                         alt={m.attachmentName || "sticker"}
                         className="msg-sticker-image"
                       />
+                    ) : isVideoNote ? (
+                      <video
+                        src={m.attachmentUrl}
+                        controls
+                        playsInline
+                        className="msg-video-note"
+                      />
                     ) : isVoice ? (
                       <VoicePlayer src={m.voiceUrl} />
                     ) : (
@@ -1760,6 +1951,13 @@ const ChatsPage = ({ user, onLogout }) => {
                                 className="msg-attachment-image"
                               />
                             </a>
+                          ) : m.attachmentType?.startsWith("video/") ? (
+                            <video
+                              src={m.attachmentUrl}
+                              controls
+                              playsInline
+                              className="msg-attachment-video"
+                            />
                           ) : (
                             <a
                               href={m.attachmentUrl}
@@ -1928,6 +2126,63 @@ const ChatsPage = ({ user, onLogout }) => {
                 </svg>
               </button>
             </div>
+          ) : isVideoRecording ? (
+            /* ── Video note recording UI ── */
+            <div className="recording-row video-recording-row">
+              <div className="video-recording-preview-wrap">
+                <video
+                  ref={videoLivePreviewRef}
+                  className="video-recording-preview"
+                  muted
+                  playsInline
+                  autoPlay
+                />
+                <span className="recording-dot video-recording-dot" />
+              </div>
+              <span className="recording-timer">
+                {formatDuration(videoRecordingTime)} / {formatDuration(MAX_VIDEO_NOTE_SECONDS)}
+              </span>
+              <button
+                className="chat-icon-btn recording-cancel"
+                onClick={cancelVideoRecording}
+                type="button"
+                aria-label="Cancel video recording"
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+              <button
+                className="chat-send"
+                onClick={sendVideoNote}
+                type="button"
+                aria-label="Send video note"
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="22" y1="2" x2="11" y2="13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                </svg>
+              </button>
+            </div>
           ) : (
             /* ── Normal input UI ── */
             <>
@@ -1982,6 +2237,31 @@ const ChatsPage = ({ user, onLogout }) => {
                     <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
                     <line x1="12" y1="19" x2="12" y2="23" />
                     <line x1="8" y1="23" x2="16" y2="23" />
+                  </svg>
+                </button>
+              ) : null}
+
+              {/* Video note record button (only when no text) */}
+              {!text.trim() && !editingMessage ? (
+                <button
+                  className="chat-icon-btn"
+                  onClick={startVideoRecording}
+                  type="button"
+                  aria-label="Record video note"
+                  title={t("recordVideoNote")}
+                >
+                  <svg
+                    width="22"
+                    height="22"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <polygon points="23 7 16 12 23 17 23 7" />
+                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
                   </svg>
                 </button>
               ) : null}
@@ -2171,7 +2451,7 @@ const ChatsPage = ({ user, onLogout }) => {
           ) : null}
 
           {contextMenu.message.username === me &&
-          contextMenu.message.type !== "voice" ? (
+          !["voice", "sticker", "video_note"].includes(contextMenu.message.type) ? (
             <button className="context-menu-item" onClick={handleStartEdit}>
               <svg
                 width="16"
