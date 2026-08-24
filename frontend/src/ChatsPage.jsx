@@ -2191,17 +2191,18 @@ const ChatsPage = ({ user, onLogout }) => {
               </button>
             </div>
           ) : isVideoRecording ? (
-            /* ── Video note recording UI ── */
-            <div className="recording-row video-recording-row">
+            /* ── Video note recording UI (Telegram/WhatsApp-style: a large
+               floating circular preview, not squeezed into the input row) ── */
+            <div className="video-recording-panel">
               <button
-                className="chat-icon-btn recording-cancel video-recording-trash"
+                className="video-recording-trash-btn"
                 onClick={cancelVideoRecording}
                 type="button"
                 aria-label="Cancel video recording"
               >
                 <svg
-                  width="18"
-                  height="18"
+                  width="20"
+                  height="20"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
@@ -2215,25 +2216,26 @@ const ChatsPage = ({ user, onLogout }) => {
                 </svg>
               </button>
 
-              <span className="recording-label video-recording-label">
-                {t("recording")}
-              </span>
-              <span className="recording-timer">
-                {formatDuration(videoRecordingTime)} / {formatDuration(MAX_VIDEO_NOTE_SECONDS)}
-              </span>
-
-              <div className="video-recording-preview-wrap">
-                <video
-                  ref={videoLivePreviewRef}
-                  className="video-recording-preview"
-                  muted
-                  playsInline
-                  autoPlay
-                />
+              <div className="video-recording-center">
+                <div className="video-recording-timer-row">
+                  <span className="video-recording-rec-dot" />
+                  <span className="video-recording-timer">
+                    {formatDuration(videoRecordingTime)}
+                  </span>
+                </div>
+                <div className="video-recording-preview-wrap">
+                  <video
+                    ref={videoLivePreviewRef}
+                    className="video-recording-preview"
+                    muted
+                    playsInline
+                    autoPlay
+                  />
+                </div>
               </div>
 
               <button
-                className="chat-send"
+                className="chat-send video-recording-send"
                 onClick={sendVideoNote}
                 type="button"
                 aria-label="Send video note"
