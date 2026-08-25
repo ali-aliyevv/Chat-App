@@ -1607,6 +1607,14 @@ const ChatsPage = ({ user, onLogout }) => {
     el.play().catch(() => {});
   }, [isVideoRecording]);
 
+  // The compose bar grows taller while recording (the message list is a
+  // sibling flex box that shrinks to make room) — re-scroll so the latest
+  // message stays in view above it rather than getting pushed further up.
+  useEffect(() => {
+    if (!isVideoRecording) return;
+    requestAnimationFrame(() => scrollToBottom("auto"));
+  }, [isVideoRecording, scrollToBottom]);
+
   const send = () => {
     const clean = text.trim();
     if (!clean) return;
@@ -2249,34 +2257,47 @@ const ChatsPage = ({ user, onLogout }) => {
               </button>
             </div>
           ) : isVideoRecording ? (
-            /* ── Video note recording — slim indicator row; the actual
-               growing circular preview floats ABOVE this row (see
-               .video-record-float below), Telegram/WhatsApp-style,
-               rather than taking over the row's height or the screen. ── */
-            <div className="recording-row">
+            /* ── Video note recording — the circular preview lives in
+               normal document flow (not an absolutely-positioned overlay),
+               so the compose bar genuinely grows taller and the message
+               list reflows around it. A floating overlay looked closer to
+               Telegram at a glance, but had no way to guarantee it never
+               sat on top of the last message — real layout does. ── */
+            <div className="video-recording-panel">
               <button
                 type="button"
-                className="chat-icon-btn recording-cancel"
+                className="video-recording-trash-btn"
                 onClick={cancelVideoRecording}
                 aria-label="Cancel video recording"
               >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="3 6 5 6 21 6" />
                   <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
                   <path d="M10 11v6M14 11v6M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
                 </svg>
               </button>
 
-              <div className="recording-indicator">
-                <span className="recording-dot" />
-                <span className="recording-timer">
-                  {formatDuration(videoRecordingTime)}
-                </span>
+              <div className="video-recording-center">
+                <div className="video-recording-timer-row">
+                  <span className="recording-dot" />
+                  <span className="recording-timer">
+                    {formatDuration(videoRecordingTime)}
+                  </span>
+                </div>
+                <div className="video-recording-preview-wrap">
+                  <video
+                    ref={videoLivePreviewRef}
+                    className="video-recording-preview"
+                    muted
+                    playsInline
+                    autoPlay
+                  />
+                </div>
               </div>
 
               <button
                 type="button"
-                className="chat-send"
+                className="chat-send video-recording-send"
                 onClick={sendVideoNote}
                 aria-label="Send video note"
               >
@@ -2285,16 +2306,6 @@ const ChatsPage = ({ user, onLogout }) => {
                   <polygon points="22 2 15 22 11 13 2 9 22 2" />
                 </svg>
               </button>
-
-              <div className="video-record-float">
-                <video
-                  ref={videoLivePreviewRef}
-                  className="video-record-float-circle"
-                  muted
-                  playsInline
-                  autoPlay
-                />
-              </div>
             </div>
           ) : (
             /* ── Normal input UI ── */
