@@ -1291,11 +1291,19 @@ body {
    over the row's height or the whole screen; the row itself stays a
    slim cancel/timer/send strip, reusing the voice-recording styling. ── */
 .video-record-float {
+  /* Opaque backdrop, sized a bit past the circle it holds — without this,
+     whatever message happens to be scrolled to that spot (very often the
+     video note you just sent, recording a second one right after) shows
+     through around the edges instead of being fully hidden behind it. */
   position: absolute;
   right: 14px;
   bottom: 100%;
   margin-bottom: 12px;
   z-index: 5;
+  padding: 6px;
+  border-radius: 50%;
+  background: #0b0f1a;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
   animation: videoFloatPop 0.18s ease;
 }
 
@@ -1305,19 +1313,19 @@ body {
 }
 
 .video-record-float-circle {
+  display: block;
   width: 150px;
   height: 150px;
   border-radius: 50%;
   object-fit: cover;
   background: #111;
   border: 3px solid #ef4444;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
   animation: videoRecRingPulse 1.4s ease-in-out infinite;
 }
 
 @keyframes videoRecRingPulse {
-  0%, 100% { box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35), 0 0 0 0 rgba(239, 68, 68, 0.5); }
-  50% { box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35), 0 0 0 6px rgba(239, 68, 68, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
+  50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
 }
 
 @media (max-width: 480px) {
