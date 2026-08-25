@@ -190,7 +190,6 @@ export default function CallModal({
   muted,
   cameraOff,
   canSwitchCamera,
-  facingMode,
   onAccept,
   onReject,
   onEnd,
@@ -382,7 +381,7 @@ export default function CallModal({
             {hasLocalVideo ? (
               <video
                 ref={localVideoRef}
-                className={`call-video-local ${facingMode !== "environment" ? "mirrored" : ""}`}
+                className="call-video-local"
                 autoPlay
                 playsInline
                 muted
@@ -536,7 +535,6 @@ CallModal.propTypes = {
   muted: PropTypes.bool.isRequired,
   cameraOff: PropTypes.bool.isRequired,
   canSwitchCamera: PropTypes.bool,
-  facingMode: PropTypes.string,
   onAccept: PropTypes.func.isRequired,
   onReject: PropTypes.func.isRequired,
   onEnd: PropTypes.func.isRequired,

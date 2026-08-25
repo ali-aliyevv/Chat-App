@@ -2248,6 +2248,54 @@ const ChatsPage = ({ user, onLogout }) => {
                 </svg>
               </button>
             </div>
+          ) : isVideoRecording ? (
+            /* ── Video note recording — slim indicator row; the actual
+               growing circular preview floats ABOVE this row (see
+               .video-record-float below), Telegram/WhatsApp-style,
+               rather than taking over the row's height or the screen. ── */
+            <div className="recording-row">
+              <button
+                type="button"
+                className="chat-icon-btn recording-cancel"
+                onClick={cancelVideoRecording}
+                aria-label="Cancel video recording"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                  <path d="M10 11v6M14 11v6M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                </svg>
+              </button>
+
+              <div className="recording-indicator">
+                <span className="recording-dot" />
+                <span className="recording-timer">
+                  {formatDuration(videoRecordingTime)}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                className="chat-send"
+                onClick={sendVideoNote}
+                aria-label="Send video note"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                </svg>
+              </button>
+
+              <div className="video-record-float">
+                <video
+                  ref={videoLivePreviewRef}
+                  className="video-record-float-circle"
+                  muted
+                  playsInline
+                  autoPlay
+                />
+              </div>
+            </div>
           ) : (
             /* ── Normal input UI ── */
             <>
@@ -2619,7 +2667,6 @@ const ChatsPage = ({ user, onLogout }) => {
         muted={call.muted}
         cameraOff={call.cameraOff}
         canSwitchCamera={call.canSwitchCamera}
-        facingMode={call.facingMode}
         onAccept={call.acceptCall}
         onReject={call.rejectCall}
         onEnd={call.endCall}
@@ -2681,50 +2728,6 @@ const ChatsPage = ({ user, onLogout }) => {
         </div>
       ) : null}
 
-      {isVideoRecording ? (
-        /* ── Fullscreen video-note recording (native iOS "Video Note"
-           camera style: black backdrop, large centered circular preview,
-           top-left close, top-center timer, bottom stop/send). ── */
-        <div className="video-record-fullscreen">
-          <button
-            type="button"
-            className="video-record-close"
-            onClick={cancelVideoRecording}
-            aria-label="Cancel video recording"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="6" y1="6" x2="18" y2="18" />
-              <line x1="18" y1="6" x2="6" y2="18" />
-            </svg>
-          </button>
-
-          <div className="video-record-timer-badge">
-            <span className="video-recording-rec-dot" />
-            {formatDuration(videoRecordingTime)}
-          </div>
-
-          <div className="video-record-circle-wrap">
-            <video
-              ref={videoLivePreviewRef}
-              className="video-record-circle"
-              muted
-              playsInline
-              autoPlay
-            />
-          </div>
-
-          <div className="video-record-controls">
-            <button
-              type="button"
-              className="video-record-stop-btn"
-              onClick={sendVideoNote}
-              aria-label="Stop and send video note"
-            >
-              <span className="video-record-stop-icon" />
-            </button>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 };

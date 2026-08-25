@@ -284,13 +284,6 @@
   text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
 }
 
-.call-video-local.mirrored {
-  /* Front camera preview mirrored for a natural "looking in a mirror"
-     feel, matching every other calling app — the actual transmitted
-     stream (what the other participants see) is never flipped. */
-  transform: scaleX(-1);
-}
-
 .call-video-local {
   position: absolute;
   z-index: 4;
