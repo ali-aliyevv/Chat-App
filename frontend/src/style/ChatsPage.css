@@ -1106,16 +1106,19 @@ body {
   display: block;
 }
 
+/* !important: .msg.mine .msg-bubble (3 classes) otherwise outranks these
+   2-class selectors and its green background/border leaks in behind the
+   circular sticker/video-note content. */
 .msg-bubble.sticker {
-  background: none;
-  border: none;
-  padding: 0;
+  background: none !important;
+  border: none !important;
+  padding: 0 !important;
 }
 
 .msg-bubble.video-note {
-  background: none;
-  border: none;
-  padding: 0;
+  background: none !important;
+  border: none !important;
+  padding: 0 !important;
 }
 
 .video-note-player {
