@@ -82,6 +82,7 @@ body {
   --chat-seen-color: rgba(0, 180, 255, 0.9);
   --chat-read-time: rgba(0, 180, 255, 0.6);
   --chat-card-bg-mobile: rgba(15, 20, 35, 0.92);
+  --chat-wallpaper-dot: rgba(255, 255, 255, 0.05);
 }
 
 /* ── Light theme chat variables ── */
@@ -150,6 +151,7 @@ body {
   --chat-seen-color: rgba(0, 140, 220, 0.85);
   --chat-read-time: rgba(0, 140, 220, 0.55);
   --chat-card-bg-mobile: rgba(250, 253, 251, 0.94);
+  --chat-wallpaper-dot: rgba(31, 43, 36, 0.05);
 }
 
 .chat-shell{
@@ -353,6 +355,11 @@ body {
   display:flex;
   flex-direction: column;
   gap: 10px;
+  /* A faint dotted wallpaper — breaks up the flat background the way
+     WhatsApp's chat pattern does, subtle enough not to compete with
+     message bubbles. */
+  background-image: radial-gradient(var(--chat-wallpaper-dot) 1px, transparent 1px);
+  background-size: 24px 24px;
 }
 
 .chat-messages::-webkit-scrollbar,
@@ -414,8 +421,10 @@ body {
 }
 
 .msg-bubble{
-  padding: 12px 14px;
-  border-radius: 16px;
+  padding: 8px 14px;
+  /* One corner pulled in — the classic chat-bubble "tail" cue, without the
+     complexity (and gradient-seam mismatch) of an actual pointed triangle. */
+  border-radius: 16px 16px 16px 4px;
   border: 1px solid var(--chat-bubble-border);
   background: var(--chat-bubble-bg);
   color: var(--chat-bubble-text);
@@ -431,6 +440,14 @@ body {
 .msg.mine .msg-bubble{
   background: var(--chat-bubble-mine-bg);
   border-color: var(--chat-bubble-mine-border);
+  border-radius: 16px 16px 4px 16px;
+}
+
+.msg-sender-name {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--chat-reply-preview-user);
+  margin-bottom: 2px;
 }
 
 .msg.system .msg-bubble{
@@ -459,11 +476,43 @@ body {
   text-align: center;
 }
 
-.msg-statusWrap{
-  margin-top: 6px;
+/* WhatsApp-style trailing time+ticks: floated so short text wraps around
+   it on the same line, dropping to its own line only when the text runs
+   long enough to need it. */
+.msg-text-block,
+.msg-attachment-caption {
+  display: block;
+}
+
+.msg-meta-inline {
+  float: right;
+  margin-left: 8px;
+  margin-top: 3px;
   display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* Non-flowing content (stickers, video notes, voice, bare attachments)
+   can't float-wrap around text that isn't there — same look, laid out
+   as a plain trailing row instead. */
+.msg-meta-row {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
   justify-content: flex-end;
-  text-align: right;
+  gap: 3px;
+  font-size: 11px;
+}
+
+/* opacity lives on the time text alone, not the wrapper — otherwise it'd
+   compound with .msg-status's own opacity and dim the blue "seen" ticks
+   along with it. */
+.msg-meta-time {
+  opacity: 0.65;
+  font-variant-numeric: tabular-nums;
 }
 
 .msg-status{
@@ -480,25 +529,39 @@ body {
   border-top: 1px solid var(--chat-input-top-border);
 }
 
+/* The text field and the emoji toggle share one rounded pill, WhatsApp-
+   style, instead of reading as two separate boxes side by side. */
+.chat-input-pill{
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px 4px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--chat-input-border);
+  background: var(--chat-input-bg);
+  transition: .2s ease;
+}
+
+.chat-input-pill:focus-within{
+  border-color: rgba(143, 217, 168,0.55);
+  box-shadow: 0 0 0 4px rgba(52, 168, 116, 0.18);
+}
+
 .chat-input{
   flex:1;
   min-width: 0;
-  padding: 12px 14px;
-  border-radius: 14px;
-  border: 1px solid var(--chat-input-border);
-  background: var(--chat-input-bg);
+  padding: 9px 0;
+  border-radius: 0;
+  border: none;
+  background: transparent;
   color: var(--chat-input-text);
   outline:none;
-  transition: .2s ease;
 }
 
 .chat-input::placeholder{
   color: var(--chat-input-placeholder);
-}
-
-.chat-input:focus{
-  border-color: rgba(143, 217, 168,0.55);
-  box-shadow: 0 0 0 4px rgba(52, 168, 116, 0.18);
 }
 
 .chat-attach{
@@ -848,11 +911,6 @@ body {
   font-weight: 900;
 }
 
-.msg-read-time {
-  font-size: 10px;
-  color: var(--chat-read-time);
-  margin-left: 4px;
-}
 
 [data-theme="light"] .context-menu {
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.12);
@@ -916,6 +974,21 @@ body {
 
 .chat-icon-btn:hover {
   border-color: rgba(143, 217, 168, 0.55);
+  background: var(--chat-ctx-hover);
+}
+
+/* The emoji toggle sits inside the pill — no border/background of its
+   own, or it'd read as a separate box nested inside the field. */
+.pill-inline-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+}
+
+.pill-inline-btn:hover {
+  border-color: transparent;
   background: var(--chat-ctx-hover);
 }
 

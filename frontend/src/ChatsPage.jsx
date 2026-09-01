@@ -2010,18 +2010,7 @@ const ChatsPage = ({ user, onLogout }) => {
                       ) : null}
                     </>
                   ) : null}
-                  {!m.system ? (
-                    <div className="msg-user">
-                      <span>{m.username}</span>
-                      {time ? (
-                        <span
-                          style={{ opacity: 0.65, marginLeft: 8, fontSize: 12 }}
-                        >
-                          {time}
-                        </span>
-                      ) : null}
-                    </div>
-                  ) : time ? (
+                  {m.system && time ? (
                     <div className="msg-user" style={{ textAlign: "center" }}>
                       <span style={{ opacity: 0.65, fontSize: 12 }}>
                         {time}
@@ -2036,6 +2025,10 @@ const ChatsPage = ({ user, onLogout }) => {
                       else msgRowRefs.current.delete(m.id);
                     }}
                   >
+                    {!isMine && !m.system && !isDeleted ? (
+                      <div className="msg-sender-name">{m.username}</div>
+                    ) : null}
+
                     {m.replyToData && !isDeleted ? (
                       <div className="msg-reply-preview">
                         <span className="msg-reply-username">
@@ -2052,15 +2045,33 @@ const ChatsPage = ({ user, onLogout }) => {
                         {t("messageDeleted")}
                       </span>
                     ) : isSticker ? (
-                      <img
-                        src={m.attachmentUrl}
-                        alt={m.attachmentName || "sticker"}
-                        className="msg-sticker-image"
-                      />
+                      <>
+                        <img
+                          src={m.attachmentUrl}
+                          alt={m.attachmentName || "sticker"}
+                          className="msg-sticker-image"
+                        />
+                        <div className="msg-meta-row">
+                          <span className="msg-meta-time">{time}</span>
+                          {renderStatus(m)}
+                        </div>
+                      </>
                     ) : isVideoNote ? (
-                      <VideoNotePlayer src={m.attachmentUrl} />
+                      <>
+                        <VideoNotePlayer src={m.attachmentUrl} />
+                        <div className="msg-meta-row">
+                          <span className="msg-meta-time">{time}</span>
+                          {renderStatus(m)}
+                        </div>
+                      </>
                     ) : isVoice ? (
-                      <VoicePlayer src={m.voiceUrl} />
+                      <>
+                        <VoicePlayer src={m.voiceUrl} />
+                        <div className="msg-meta-row">
+                          <span className="msg-meta-time">{time}</span>
+                          {renderStatus(m)}
+                        </div>
+                      </>
                     ) : (
                       <>
                         {m.attachmentUrl ? (
@@ -2119,32 +2130,34 @@ const ChatsPage = ({ user, onLogout }) => {
                         ) : null}
 
                         {displayText ? (
-                          <span
-                            className={
-                              m.attachmentUrl
-                                ? "msg-attachment-caption"
-                                : undefined
-                            }
-                          >
-                            {displayText}
-                          </span>
+                          m.system ? (
+                            <span>{displayText}</span>
+                          ) : (
+                            <div
+                              className={
+                                m.attachmentUrl
+                                  ? "msg-attachment-caption"
+                                  : "msg-text-block"
+                              }
+                            >
+                              {displayText}
+                              <span className="msg-meta-inline">
+                                {time}
+                                {renderStatus(m)}
+                              </span>
+                            </div>
+                          )
+                        ) : !m.system ? (
+                          <div className="msg-meta-row">
+                            <span className="msg-meta-time">{time}</span>
+                            {renderStatus(m)}
+                          </div>
                         ) : null}
                       </>
                     )}
 
                     {m.editedAt && !isDeleted ? (
                       <span className="msg-edited">{t("edited")}</span>
-                    ) : null}
-
-                    {isMine && !isDeleted ? (
-                      <div className="msg-statusWrap">
-                        {renderStatus(m)}
-                        {m.readAt ? (
-                          <span className="msg-read-time">
-                            {formatTime(m.readAt)}
-                          </span>
-                        ) : null}
-                      </div>
                     ) : null}
                   </div>
                 </div>
@@ -2310,34 +2323,144 @@ const ChatsPage = ({ user, onLogout }) => {
           ) : (
             /* ── Normal input UI ── */
             <>
-              <input
-                ref={inputRef}
-                className="chat-input"
-                value={text}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setText(v);
-                  if (!editingMessage) {
-                    socket.emit("typing", {
-                      room,
-                      isTyping: v.trim().length > 0,
-                    });
+              <div className="chat-input-pill">
+                <input
+                  ref={inputRef}
+                  className="chat-input"
+                  value={text}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setText(v);
+                    if (!editingMessage) {
+                      socket.emit("typing", {
+                        room,
+                        isTyping: v.trim().length > 0,
+                      });
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") send();
+                    if (e.key === "Escape") {
+                      if (editingMessage) cancelEdit();
+                      if (replyingTo) cancelReply();
+                    }
+                  }}
+                  placeholder={
+                    editingMessage
+                      ? t("editMessagePlaceholder")
+                      : t("writeMessage")
                   }
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") send();
-                  if (e.key === "Escape") {
-                    if (editingMessage) cancelEdit();
-                    if (replyingTo) cancelReply();
-                  }
-                }}
-                placeholder={
-                  editingMessage
-                    ? t("editMessagePlaceholder")
-                    : t("writeMessage")
-                }
-                autoComplete="off"
-              />
+                  autoComplete="off"
+                />
+
+                {/* Emoji/sticker picker toggle — lives inside the pill,
+                    WhatsApp-style, instead of as a separate outer button. */}
+                <div className="emoji-picker-wrapper" ref={emojiPickerRef}>
+                  <button
+                    className="chat-icon-btn pill-inline-btn"
+                    onClick={() => {
+                      setEmojiPickerWidth(Math.min(320, window.innerWidth - 24));
+                      setShowEmojiPicker((p) => !p);
+                      loadStickers();
+                    }}
+                    type="button"
+                    aria-label="Emoji"
+                  >
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <circle cx="12" cy="12" r="10" />
+                      <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+                      <line x1="9" y1="9" x2="9.01" y2="9" />
+                      <line x1="15" y1="9" x2="15.01" y2="9" />
+                    </svg>
+                  </button>
+                  {showEmojiPicker ? (
+                    <div className="emoji-picker-popover">
+                      <div className="picker-tabs">
+                        <button
+                          type="button"
+                          className={`picker-tab ${pickerTab === "emoji" ? "active" : ""}`}
+                          onClick={() => setPickerTab("emoji")}
+                        >
+                          {t("emojiTab")}
+                        </button>
+                        <button
+                          type="button"
+                          className={`picker-tab ${pickerTab === "stickers" ? "active" : ""}`}
+                          onClick={() => {
+                            setPickerTab("stickers");
+                            loadStickers();
+                          }}
+                        >
+                          {t("stickersTab")}
+                        </button>
+                      </div>
+
+                      {pickerTab === "emoji" ? (
+                        <EmojiPicker
+                          key={emojiPickerWidth}
+                          onEmojiClick={onEmojiClick}
+                          width={emojiPickerWidth}
+                          height={360}
+                          searchDisabled={false}
+                          skinTonesDisabled
+                          previewConfig={{ showPreview: false }}
+                          theme={resolvedTheme === "dark" ? "dark" : "light"}
+                        />
+                      ) : (
+                        <div className="sticker-grid" style={{ width: emojiPickerWidth }}>
+                          <input
+                            ref={stickerFileInputRef}
+                            type="file"
+                            accept="image/*"
+                            style={{ display: "none" }}
+                            onChange={handleStickerFileChange}
+                          />
+                          <button
+                            type="button"
+                            className="sticker-add-tile"
+                            onClick={() => stickerFileInputRef.current?.click()}
+                            title={t("addSticker")}
+                          >
+                            +
+                          </button>
+                          {stickers.length === 0 ? (
+                            <div className="sticker-empty">{t("noStickersYet")}</div>
+                          ) : (
+                            stickers.map((s) => (
+                              <div key={s.id} className="sticker-tile">
+                                <button
+                                  type="button"
+                                  className="sticker-tile-btn"
+                                  onClick={() => sendSticker(s)}
+                                >
+                                  <img src={s.url} alt={s.name || "sticker"} />
+                                </button>
+                                <button
+                                  type="button"
+                                  className="sticker-tile-remove"
+                                  onClick={() => handleDeleteSticker(s.id)}
+                                  title={t("deleteSticker")}
+                                >
+                                  &#10005;
+                                </button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
 
               {/* Voice record button (only when no text) */}
               {!text.trim() && !editingMessage ? (
@@ -2389,110 +2512,6 @@ const ChatsPage = ({ user, onLogout }) => {
                   </svg>
                 </button>
               ) : null}
-
-              {/* Emoji/sticker picker toggle - right side */}
-              <div className="emoji-picker-wrapper" ref={emojiPickerRef}>
-                <button
-                  className="chat-icon-btn"
-                  onClick={() => {
-                    setEmojiPickerWidth(Math.min(320, window.innerWidth - 24));
-                    setShowEmojiPicker((p) => !p);
-                    loadStickers();
-                  }}
-                  type="button"
-                  aria-label="Emoji"
-                >
-                  <svg
-                    width="22"
-                    height="22"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <circle cx="12" cy="12" r="10" />
-                    <path d="M8 14s1.5 2 4 2 4-2 4-2" />
-                    <line x1="9" y1="9" x2="9.01" y2="9" />
-                    <line x1="15" y1="9" x2="15.01" y2="9" />
-                  </svg>
-                </button>
-                {showEmojiPicker ? (
-                  <div className="emoji-picker-popover">
-                    <div className="picker-tabs">
-                      <button
-                        type="button"
-                        className={`picker-tab ${pickerTab === "emoji" ? "active" : ""}`}
-                        onClick={() => setPickerTab("emoji")}
-                      >
-                        {t("emojiTab")}
-                      </button>
-                      <button
-                        type="button"
-                        className={`picker-tab ${pickerTab === "stickers" ? "active" : ""}`}
-                        onClick={() => setPickerTab("stickers")}
-                      >
-                        {t("stickersTab")}
-                      </button>
-                    </div>
-
-                    {pickerTab === "emoji" ? (
-                      <EmojiPicker
-                        key={emojiPickerWidth}
-                        onEmojiClick={onEmojiClick}
-                        width={emojiPickerWidth}
-                        height={360}
-                        searchDisabled={false}
-                        skinTonesDisabled
-                        previewConfig={{ showPreview: false }}
-                        theme={resolvedTheme === "dark" ? "dark" : "light"}
-                      />
-                    ) : (
-                      <div className="sticker-grid" style={{ width: emojiPickerWidth }}>
-                        <input
-                          ref={stickerFileInputRef}
-                          type="file"
-                          accept="image/*"
-                          onChange={handleStickerFileChange}
-                          style={{ display: "none" }}
-                        />
-                        <button
-                          type="button"
-                          className="sticker-add-tile"
-                          onClick={() => stickerFileInputRef.current?.click()}
-                          title={t("addSticker")}
-                        >
-                          +
-                        </button>
-                        {stickers.length === 0 ? (
-                          <div className="sticker-empty">{t("noStickersYet")}</div>
-                        ) : (
-                          stickers.map((s) => (
-                            <div key={s.id} className="sticker-tile">
-                              <button
-                                type="button"
-                                className="sticker-tile-btn"
-                                onClick={() => sendSticker(s)}
-                              >
-                                <img src={s.url} alt={s.name || "sticker"} />
-                              </button>
-                              <button
-                                type="button"
-                                className="sticker-tile-remove"
-                                onClick={() => handleDeleteSticker(s.id)}
-                                title={t("deleteSticker")}
-                              >
-                                &#10005;
-                              </button>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ) : null}
-              </div>
 
               <button
                 className="chat-send"
