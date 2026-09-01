@@ -35,6 +35,11 @@ self.addEventListener("push", (event) => {
     tag: isCall ? `call-${data.room || "any"}` : data.room ? `room-${data.room}` : undefined,
     renotify: true,
     requireInteraction: isCall,
+    // Custom notification sounds aren't supported by any browser's
+    // Notification API, so a repeating vibration pattern is the closest
+    // thing to a distinct "ringtone" a background push can produce —
+    // reserved for calls so a plain message never buzzes like one.
+    vibrate: isCall ? [400, 200, 400, 200, 400, 200, 400] : undefined,
   };
 
   event.waitUntil(self.registration.showNotification(title, options));
